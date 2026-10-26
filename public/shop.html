@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Complete Catalogue — SATINOSTITCH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600&family=Marcellus&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="images/emblem.png">`r`n<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="shop">
+<div id="site-header"></div>
+<main>
+<div class="wrap page-title" style="padding:2.5rem 0 1rem">
+  <span class="hero-pill">Handcrafted Catalog</span>
+  <h1>All Creations</h1>
+</div>
+<div class="wrap shop">
+  <aside class="filters-box" aria-label="Filters">
+    <div class="filters-title">
+      <h3>Filters</h3>
+      <button class="btn ghost sm" id="reset-top" style="padding:0.2rem 0.6rem;font-size:0.75rem">Reset</button>
+    </div>
+    <div class="field">
+      <label for="f-search">Search Catalogue</label>
+      <input id="f-search" type="search" placeholder="e.g. Banarasi, silk, blazer, lehenga">
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <div class="chips">
+        <button data-cat="all">All</button>
+        <button data-cat="ethnic">Ethnic</button>
+        <button data-cat="western">Western</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="f-type">Silhouette / Type</label>
+      <select id="f-type"></select>
+    </div>
+    <div class="field">
+      <label for="f-price">Price Ceiling</label>
+      <input id="f-price" type="range" min="1500" max="15000" step="500" value="15000">
+      <div style="display:flex;justify-content:space-between;margin-top:0.3rem">
+        <span class="muted" style="font-size:0.8rem">₹1,500</span>
+        <span id="f-price-out" class="card-price" style="font-size:0.95rem">Up to ₹15,000</span>
+      </div>
+    </div>
+  </aside>
+  <div>
+    <div class="shop-bar">
+      <p style="display:flex;align-items:center;gap:0.8rem">
+        <span id="shop-count" style="font-weight:600"></span>
+        <button class="btn ghost sm" id="col-clear" hidden style="padding:.2rem .8rem;font-size:0.8rem">Clear collection filter</button>
+      </p>
+      <div style="display:flex;align-items:center;gap:0.6rem">
+        <label for="f-sort" style="font-size:0.9rem;white-space:nowrap" class="muted">Sort by:</label>
+        <select id="f-sort" style="width:auto;padding:0.5rem 0.8rem" aria-label="Sort">
+          <option value="new">Featured &amp; Newest</option>
+          <option value="low">Price, low to high</option>
+          <option value="high">Price, high to low</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+</main>
+<div id="site-footer"></div>
+<div id="quick-view-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true"></div>
+<div id="fit-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true"></div>
+<script src="js/app.js"></script>
+</body>
+</html>
