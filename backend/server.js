@@ -11,7 +11,7 @@ const orders = [];
 
 // Middleware setup
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 // Product catalog endpoint: supports category and collection filtering
 app.get('/api/products', (req, res) => {
@@ -61,6 +61,11 @@ app.post('/api/orders', (req, res) => {
 
   orders.push(order);
   res.status(201).json({ id: order.id, total });
+});
+
+// 404 handler for undefined API routes
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
 });
 
 // Start application server
