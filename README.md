@@ -1,57 +1,25 @@
-# SATINOSTITCH Haute Couture
+SATINOSTITCH – Fashion E-Commerce Website
 
-Haute couture ethnic and contemporary western wear digital flagship storefront, featuring pure Banarasi silk, heritage bandhani, tailored blazers, and liquid satin collections.
+SATINOSTITCH is an online fashion shopping platform offering a collection of ethnic and western wear. The website allows customers to explore clothing collections, view product details, choose sizes, manage their wishlist and shopping cart, and proceed to checkout.
 
-## Project Structure
+The project aims to provide a smooth, user-friendly, and convenient online shopping experience with an elegant and modern design.
 
-```text
-satinostitch/
-├── backend/
-│   ├── data/
-│   │   └── products.json      # Product catalog database
-│   └── server.js              # Express API server & static file host
-├── frontend/
-│   ├── css/
-│   │   └── style.css          # Haute couture design system & styles
-│   ├── images/                # Brand emblems, hero assets & product photography
-│   ├── js/
-│   │   └── app.js             # Client SPA controller & storefront logic
-│   ├── about.html             # Heritage & atelier story
-│   ├── cart.html              # Shopping bag
-│   ├── checkout.html          # Order placement & shipping details
-│   ├── collections.html       # Editorial collections
-│   ├── contact.html           # Stylist consultation inquiry
-│   ├── index.html             # Brand homepage & interactive style matcher
-│   ├── login.html             # Client login & account registration
-│   ├── product.html           # PDP with zoom, fabric specs & fit guides
-│   ├── shop.html              # Full catalog with multi-facet filters
-│   └── wishlist.html          # Curated personal trousseau
-├── package.json
-└── README.md
-```
+* Key Features
 
-## Quick Start
+- Browse ethnic and western clothing collections.
+- Search, filter, and sort products.
+- View product details and select sizes.
+- Add products to the wishlist and shopping cart.
+- Navigate through different sections of the website.
+- Access customer login, registration, and checkout pages.
 
-```bash
-# 1. Install dependencies
-npm install
+* Technology
 
-# 2. Run the application
-npm start
+The project uses HTML, CSS, and JavaScript for the frontend, with Node.js backend integration planned for future development.
 
-# For development with auto-reload:
-npm run dev
-```
+## Project Goal
 
-Visit the storefront at **http://localhost:3000**.
+To create a professional online fashion store that makes discovering and purchasing clothing simple, convenient, and enjoyable.
 
-## Architecture & Features
 
-- **Frontend (`frontend/`)**: Modern vanilla HTML5, CSS3 design tokens, and modular vanilla JavaScript. Includes multi-currency engine (INR, USD, EUR, GBP, AED), interactive style matcher, instant search, faceted filters, and modal quick views.
-- **Backend (`backend/`)**: Lightweight Express server serving RESTful APIs and delivering static storefront assets:
-  - `GET /api/products`: Filter catalog by category (`cat`) or collection (`col`).
-  - `GET /api/products/:id`: Fetch single product by numeric identifier.
-  - `POST /api/orders`: Process and log checkout orders with customer info.
-  - `POST /api/contact`: Receive concierge and customer inquiries.
-- **Data Persistence**: Cart, wishlist, and active session persist via `localStorage`. Catalog data is housed in `backend/data/products.json`.
-- **Promo Code**: Try `HERITAGE10` at checkout for 10% off.
+SATINOSTITCH — Where timeless elegance meets modern fashion.
