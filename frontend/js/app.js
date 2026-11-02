@@ -569,7 +569,7 @@
         sort: q.get('sort') || 'new'
       };
 
-      const types = [...new Set(PRODUCTS.map(p => p.type))];
+      const types = [...new Set(PRODUCTS.map(p => p.type))].filter(Boolean);
       const typeSelect = $('#f-type');
       if (typeSelect) {
         typeSelect.innerHTML = '<option value="all">All Silhouettes</option>' + types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -580,22 +580,9 @@
       if ($('#f-price')) $('#f-price').value = f.max;
       if ($('#f-sort')) $('#f-sort').value = f.sort;
 
-      const draw = () => {
-        $$('[data-cat]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cat === f.cat));
-        if ($('#f-price-out')) $('#f-price-out').textContent = 'Up to ' + money(f.max);
+      let debounceTimer = null;
 
-        const term = f.q.trim().toLowerCase();
-        let list = PRODUCTS.filter(p => 
-          (f.cat === 'all' || p.cat === f.cat) &&
-          (f.type === 'all' || p.type === f.type) &&
-          (f.col === 'all' || p.col === f.col) &&
-          p.price <= f.max &&
-          (!term || (p.name + p.type + p.fabric + p.desc).toLowerCase().includes(term))
-        );
-
-        if (f.sort === 'low') list.sort((a, b) => a.price - b.price);
-        if (f.sort === 'high') list.sort((a, b) => b.price - a.price);
-
+      const renderGrid = (list) => {
         const col = COLLECTIONS.find(c => c.key === f.col);
         if ($('#shop-count')) {
           $('#shop-count').textContent = `${list.length} ${list.length === 1 ? 'piece' : 'pieces'}${col ? ' in ' + col.name : ''}`;
@@ -611,7 +598,9 @@
               <button class="btn ghost" id="reset">Reset All Filters</button>
             </div>`;
         }
+      };
 
+      const fetchFromApi = async () => {
         const params = new URLSearchParams();
         if (f.cat !== 'all') params.set('cat', f.cat);
         if (f.type !== 'all') params.set('type', f.type);
@@ -619,36 +608,71 @@
         if (f.q) params.set('q', f.q);
         if (f.max < 15000) params.set('max', f.max);
         if (f.sort !== 'new') params.set('sort', f.sort);
+
         history.replaceState(null, '', params.toString() ? '?' + params : location.pathname);
+
+        try {
+          const res = await fetch('/api/products?' + params.toString());
+          if (!res.ok) throw new Error('API response was not ok');
+          const list = await res.json();
+          // Update global cache so PDP quick view, wish, and cart stay synchronized
+          list.forEach(item => {
+            const idx = PRODUCTS.findIndex(p => p.id === item.id);
+            if (idx >= 0) PRODUCTS[idx] = item;
+            else PRODUCTS.push(item);
+          });
+          renderGrid(list);
+        } catch (err) {
+          console.warn('[SATINOSTITCH] API fetch error, falling back to client cache:', err.message);
+          const term = f.q.trim().toLowerCase();
+          let list = PRODUCTS.filter(p => 
+            (f.cat === 'all' || p.cat === f.cat) &&
+            (f.type === 'all' || p.type === f.type) &&
+            (f.col === 'all' || p.col === f.col) &&
+            p.price <= f.max &&
+            (!term || (p.name + p.type + p.fabric + (p.desc || '')).toLowerCase().includes(term))
+          );
+          if (f.sort === 'low') list.sort((a, b) => a.price - b.price);
+          if (f.sort === 'high') list.sort((a, b) => b.price - a.price);
+          if (f.sort === 'rating') list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+          renderGrid(list);
+        }
       };
 
-      $$('[data-cat]').forEach(b => b.onclick = () => { f.cat = b.dataset.cat; draw(); });
-      if ($('#f-type')) $('#f-type').onchange = e => { f.type = e.target.value; draw(); };
-      if ($('#f-search')) $('#f-search').oninput = e => { f.q = e.target.value; draw(); };
-      if ($('#f-price')) $('#f-price').oninput = e => { f.max = +e.target.value; draw(); };
-      if ($('#f-sort')) $('#f-sort').onchange = e => { f.sort = e.target.value; draw(); };
-      if ($('#col-clear')) $('#col-clear').onclick = () => { f.col = 'all'; draw(); };
-      if ($('#reset-top')) $('#reset-top').onclick = () => {
+      const draw = (immediate = true) => {
+        $$('[data-cat]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cat === f.cat));
+        if ($('#f-price-out')) $('#f-price-out').textContent = 'Up to ' + money(f.max);
+
+        clearTimeout(debounceTimer);
+        if (immediate) {
+          fetchFromApi();
+        } else {
+          debounceTimer = setTimeout(fetchFromApi, 250);
+        }
+      };
+
+      $$('[data-cat]').forEach(b => b.onclick = () => { f.cat = b.dataset.cat; draw(true); });
+      if ($('#f-type')) $('#f-type').onchange = e => { f.type = e.target.value; draw(true); };
+      if ($('#f-search')) $('#f-search').oninput = e => { f.q = e.target.value; draw(false); };
+      if ($('#f-price')) $('#f-price').oninput = e => { f.max = +e.target.value; draw(false); };
+      if ($('#f-sort')) $('#f-sort').onchange = e => { f.sort = e.target.value; draw(true); };
+      if ($('#col-clear')) $('#col-clear').onclick = () => { f.col = 'all'; draw(true); };
+
+      const resetFilters = () => {
         Object.assign(f, { cat: 'all', type: 'all', col: 'all', q: '', max: 15000, sort: 'new' });
         if ($('#f-type')) $('#f-type').value = 'all';
         if ($('#f-search')) $('#f-search').value = '';
         if ($('#f-price')) $('#f-price').value = 15000;
         if ($('#f-sort')) $('#f-sort').value = 'new';
-        draw();
+        draw(true);
       };
 
+      if ($('#reset-top')) $('#reset-top').onclick = resetFilters;
       document.addEventListener('click', e => {
-        if (e.target.id === 'reset') {
-          Object.assign(f, { cat: 'all', type: 'all', col: 'all', q: '', max: 15000, sort: 'new' });
-          if ($('#f-type')) $('#f-type').value = 'all';
-          if ($('#f-search')) $('#f-search').value = '';
-          if ($('#f-price')) $('#f-price').value = 15000;
-          if ($('#f-sort')) $('#f-sort').value = 'new';
-          draw();
-        }
+        if (e.target.id === 'reset') resetFilters();
       });
 
-      draw();
+      draw(true);
     },
 
     product() {
