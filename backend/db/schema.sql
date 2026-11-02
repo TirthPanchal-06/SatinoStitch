@@ -142,6 +142,19 @@ CREATE TABLE IF NOT EXISTS user_wishlists (
   UNIQUE (user_id, product_id)
 );
 
+-- 10. Persistent Customer Cart
+CREATE TABLE IF NOT EXISTS cart_items (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  size VARCHAR(20) NOT NULL DEFAULT 'M',
+  color VARCHAR(100),
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE (user_id, product_id, size, color)
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_products_cat ON products(cat);
 CREATE INDEX IF NOT EXISTS idx_products_col ON products(col);
@@ -151,3 +164,4 @@ CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON product_reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_addresses_user_id ON user_addresses(user_id);
+CREATE INDEX IF NOT EXISTS idx_cart_items_user_id ON cart_items(user_id);

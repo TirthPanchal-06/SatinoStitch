@@ -366,6 +366,14 @@
     const hit = cart.find(i => i.id === id && i.size === size && i.color === selectedColor);
     hit ? hit.qty += qty : cart.push({ id, size, qty, color: selectedColor });
     db.set('cart', cart);
+
+    // Sync to PostgreSQL cart table when authenticated
+    if (db.token()) {
+      fetchAuth('/api/cart', {
+        method: 'POST',
+        body: { productId: id, size, color: selectedColor, quantity: qty }
+      }).catch(() => {});
+    }
   }
 
   function toggleWish(id) {
@@ -1310,11 +1318,18 @@
         const c = db.get('cart', []);
         c[i].qty = Math.min(Math.max(c[i].qty + d, 1), 9);
         db.set('cart', c);
+        if (db.token()) {
+          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => {});
+        }
         pages.cart();
       });
 
       $$('[data-rm]').forEach(b => b.onclick = () => {
-        db.set('cart', db.get('cart', []).filter((_, i) => i !== +b.dataset.rm));
+        const c = db.get('cart', []).filter((_, i) => i !== +b.dataset.rm);
+        db.set('cart', c);
+        if (db.token()) {
+          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => {});
+        }
         pages.cart();
       });
 
@@ -1898,7 +1913,7 @@
 
                 try {
                   toast('Uploading garment photography...');
-                  const res = await fetch('/api/upload', {
+                  const res = await fetchAuth('/api/upload', {
                     method: 'POST',
                     body: formData
                   });
@@ -1982,6 +1997,10 @@
             db.setToken(data.token);
             db.set('user', data.user);
             await syncUserWishlist();
+            const localCart = db.get('cart', []);
+            if (localCart.length) {
+              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
+            }
             toast(`Welcome, ${data.user.name}!`);
             mountChrome();
             pages.login();

@@ -146,17 +146,18 @@ satinostitch/
 
 ## Database Architecture (PostgreSQL)
 
-The database schema includes 9 relational tables with foreign keys and performance indexes:
+The database schema includes 10 relational tables with foreign keys and performance indexes:
 
-1. **`users`**: Patron and curator accounts (`id`, `full_name`, `email`, `password_hash`, `role`, `phone`, `created_at`).
-2. **`user_addresses`**: Saved delivery addresses (`id`, `user_id`, `recipient_name`, `phone`, `address_line`, `city`, `state`, `postal_code`, `is_default`, `created_at`).
+1. **`users`**: Patron and curator accounts (`id`, `name`, `email`, `password_hash`, `role`, `phone`, `created_at`, `updated_at`).
+2. **`user_addresses`**: Saved delivery addresses (`id`, `user_id`, `recipient_name`, `phone`, `address_line1`, `address_line2`, `city`, `state`, `pincode`, `is_default`, `created_at`).
 3. **`categories`**: Garment categories (`id`, `slug`, `name`, `description`).
 4. **`products`**: Garment catalog with JSONB variants (`id`, `name`, `category_id`, `cat`, `type`, `col`, `price`, `old_price`, `images`, `sizes`, `colors`, `stock`, `fabric`, `description`).
-5. **`product_reviews`**: Verified customer reviews (`id`, `product_id`, `user_id`, `author_name`, `rating`, `title`, `comment`, `verified_purchase`, `created_at`).
-6. **`coupons`**: Promotional discount codes (`id`, `code`, `discount_percent`, `min_order_amount`, `max_discount`, `is_active`, `expires_at`).
-7. **`orders`**: Customer orders with tracking (`id`, `order_number`, `user_id`, `recipient_name`, `shipping_address`, `payment_method`, `subtotal`, `discount_amount`, `shipping_fee`, `total_amount`, `status`, `tracking_number`, `created_at`).
-8. **`order_items`**: Order line items (`id`, `order_id`, `product_id`, `product_name`, `size`, `color`, `quantity`, `unit_price`, `total_price`).
-9. **`user_wishlists`**: Synchronized saved trousseau items (`id`, `user_id`, `product_id`, `created_at`).
+5. **`product_reviews`**: Verified customer reviews (`id`, `product_id`, `user_id`, `user_name`, `rating`, `title`, `comment`, `verified_purchase`, `created_at`).
+6. **`coupons`**: Promotional discount codes (`id`, `code`, `discount_percent`, `min_order_amount`, `is_active`, `description`).
+7. **`orders`**: Customer orders with tracking (`id`, `user_id`, `customer_name`, `customer_email`, `customer_phone`, `shipping_address`, `subtotal`, `discount`, `coupon_code`, `shipping_fee`, `total`, `payment_method`, `payment_status`, `status`, `tracking_number`, `created_at`).
+8. **`order_items`**: Order line items (`id`, `order_id`, `product_id`, `product_name`, `size`, `color`, `price`, `quantity`, `total`).
+9. **`user_wishlists`**: Isolated per-user trousseau items (`id`, `user_id`, `product_id`, `created_at`).
+10. **`cart_items`**: Persistent customer shopping bag (`id`, `user_id`, `product_id`, `size`, `color`, `quantity`, `created_at`, `updated_at`).
 
 ---
 
@@ -258,43 +259,63 @@ The database schema includes 9 relational tables with foreign keys and performan
 | `POST` | `/api/newsletter` | VIP newsletter dispatch signup |
 | `POST` | `/api/contact` | Concierge & atelier inquiry submission |
 
-### Product Catalog & Reviews
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/categories` | Categories with live product count aggregations |
-| `GET` | `/api/types` | Distinct garment silhouette types |
-| `GET` | `/api/products` | Dynamic filtering (`cat`, `col`, `type`, `q`, `max`, `inStock`, `sort`) |
-| `GET` | `/api/products/:id` | Single product details with variants |
-| `POST` | `/api/products` | Create garment (Admin/Curator) |
-| `PUT` | `/api/products/:id` | Update garment details & inventory (Admin/Curator) |
-| `DELETE` | `/api/products/:id` | Remove garment from catalog (Admin/Curator) |
-| `POST` | `/api/upload` | Upload product imagery via Multer |
-| `GET` | `/api/products/:id/reviews` | Fetch verified reviews for garment |
-| `POST` | `/api/products/:id/reviews` | Submit new customer review |
+### Product Catalog, Inventory & Categories
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/categories` | Public | Categories with live product count aggregations |
+| `POST` | `/api/categories` | Admin | Create category in PostgreSQL |
+| `PUT` | `/api/categories/:id` | Admin | Update category name & description |
+| `DELETE` | `/api/categories/:id` | Admin | Remove category |
+| `GET` | `/api/types` | Public | Distinct garment silhouette types |
+| `GET` | `/api/products` | Public | Dynamic filtering (`cat`, `col`, `type`, `q`, `max`, `inStock`, `sort`) |
+| `GET` | `/api/products/:id` | Public | Single product details with variants |
+| `POST` | `/api/products` | Admin | Create garment (Admin/Curator) with RBAC |
+| `PUT` | `/api/products/:id` | Admin | Update garment details & inventory (Admin/Curator) |
+| `DELETE` | `/api/products/:id` | Admin | Remove garment from catalog (Admin/Curator) |
+| `POST` | `/api/upload` | Admin | Upload product imagery via Multer (JPEG/PNG/WebP, 5MB limit) |
+| `GET` | `/api/inventory` | Admin | Total catalog stock, low-stock alerts, out-of-stock count |
+| `PUT` | `/api/products/:id/stock` | Admin | Direct atelier inventory adjustment |
+| `GET` | `/api/products/:id/reviews` | Public | Fetch verified reviews for garment |
+| `POST` | `/api/products/:id/reviews` | Patron | Submit new customer review |
 
-### Cart, Coupons & Checkout
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/coupons/:code` | Validate promo code and calculate discount |
-| `POST` | `/api/orders` | Place transactional order and decrement stock |
-| `GET` | `/api/orders/:id` | Retrieve order details & tracking status |
-| `POST` | `/api/orders/:id/cancel` | Cancel order and restock inventory |
-| `POST` | `/api/orders/:id/return` | Submit customer return request |
+### Persistent Cart, Coupons & Checkout
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/cart` | Patron | Retrieve persistent server-side cart & line items |
+| `POST` | `/api/cart` | Patron | Add or increment item in PostgreSQL shopping bag |
+| `PUT` | `/api/cart/:id` | Patron | Update quantity for cart line item |
+| `DELETE` | `/api/cart/:id` | Patron | Remove line item from bag |
+| `DELETE` | `/api/cart` | Patron | Clear shopping bag |
+| `POST` | `/api/cart/sync` | Patron | Merge guest localStorage cart into database on login |
+| `GET` | `/api/coupons/:code` | Public | Validate promo code and calculate discount |
+| `GET` | `/api/admin/coupons` | Admin | List all promotional discount codes |
+| `POST` | `/api/admin/coupons` | Admin | Create new atelier promo coupon |
+| `PUT` | `/api/admin/coupons/:id` | Admin | Activate/deactivate or adjust coupon |
+| `DELETE` | `/api/admin/coupons/:id` | Admin | Delete promo coupon |
+| `POST` | `/api/orders` | Public / Patron | Commission order with stock decrement & cart clearing |
+| `GET` | `/api/orders/:id` | Public / Patron | Retrieve order details & tracking status |
+| `GET` | `/api/admin/orders` | Admin | View all atelier customer orders |
+| `PUT` | `/api/orders/:id/status` | Admin | Update order dispatch / fulfillment status |
+| `POST` | `/api/orders/:id/cancel` | Public / Patron | Cancel order and automatically restock inventory |
+| `POST` | `/api/orders/:id/return` | Public / Patron | Submit customer return request for delivered orders |
 
-### Authentication & Customer Account
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/auth/register` | Register new patron account |
-| `POST` | `/api/auth/login` | Patron / Admin authentication with JWT |
-| `GET` | `/api/auth/me` | Fetch active patron profile from token |
-| `PUT` | `/api/auth/profile` | Update patron profile information |
-| `GET` | `/api/user/addresses` | List patron saved addresses |
-| `POST` | `/api/user/addresses` | Add new saved address |
-| `DELETE` | `/api/user/addresses/:id` | Delete saved address |
-| `GET` | `/api/user/orders` | List patron order history |
-| `GET` | `/api/user/wishlist` | Fetch synchronized trousseau wishlist |
-| `POST` | `/api/user/wishlist` | Add item to synchronized wishlist |
-| `DELETE` | `/api/user/wishlist/:productId` | Remove item from synchronized wishlist |
+### Authentication, Profiles & Wishlist
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Register customer account (**public admin registration disabled**) |
+| `POST` | `/api/auth/login` | Public | Patron / Admin authentication with JWT & bcrypt |
+| `GET` | `/api/auth/me` | Patron | Fetch active patron profile from token |
+| `PUT` | `/api/auth/profile` | Patron | Update patron profile information |
+| `PUT` | `/api/auth/password` | Patron | Update account password with old password verification |
+| `GET` | `/api/user/addresses` | Patron | List patron saved addresses |
+| `POST` | `/api/user/addresses` | Patron | Add new saved address |
+| `DELETE` | `/api/user/addresses/:id` | Patron | Delete saved address |
+| `GET` | `/api/user/orders` | Patron | List patron order history |
+| `GET` | `/api/user/wishlist` | Patron | Fetch isolated personal trousseau wishlist |
+| `POST` | `/api/user/wishlist` | Patron | Add item to isolated wishlist |
+| `DELETE` | `/api/user/wishlist/:productId` | Patron | Remove item from isolated wishlist |
+| `GET` | `/api/admin/users` | Admin | List all registered patrons (passwords stripped) |
+| `PUT` | `/api/admin/users/:id/role` | Admin | Promote or adjust account role |
 
 ---
 

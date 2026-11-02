@@ -16,17 +16,18 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Setup Multer for Image Uploads
+// Setup Multer for Image Uploads with strict MIME and size limits
+const uploadDir = path.join(__dirname, '..', 'frontend', 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '..', 'frontend', 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(file.originalname).toLowerCase();
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, 'garment-' + uniqueSuffix + ext);
   }
@@ -34,12 +35,13 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+    if (allowed.includes(file.mimetype.toLowerCase())) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed.'));
+      cb(new Error('Invalid image format. Only JPEG, PNG, and WebP are allowed.'));
     }
   }
 });
@@ -59,24 +61,26 @@ const loadFallbackProducts = () => {
 };
 
 /* ==========================================================================
-   Health Check
+   Health Check & Diagnostics
    ========================================================================== */
 app.get('/api/health', async (req, res) => {
   const dbHealth = await db.testConnection();
   const isHealthy = dbHealth.connected;
 
-  let counts = { products: 0, categories: 0, users: 0, orders: 0 };
+  let counts = { products: 0, categories: 0, users: 0, orders: 0, cartItems: 0 };
   if (isHealthy) {
     try {
       const pCount = await db.query('SELECT COUNT(*)::int AS count FROM products;');
       const cCount = await db.query('SELECT COUNT(*)::int AS count FROM categories;');
       const uCount = await db.query('SELECT COUNT(*)::int AS count FROM users;');
       const oCount = await db.query('SELECT COUNT(*)::int AS count FROM orders;');
+      const cartCount = await db.query('SELECT COUNT(*)::int AS count FROM cart_items;');
       counts = {
         products: pCount.rows[0].count,
         categories: cCount.rows[0].count,
         users: uCount.rows[0].count,
-        orders: oCount.rows[0].count
+        orders: oCount.rows[0].count,
+        cartItems: cartCount.rows[0].count
       };
     } catch (e) {
       console.warn('[PostgreSQL] Could not fetch table counts for health check:', e.message);
@@ -118,93 +122,122 @@ app.get('/api/banners', (req, res) => {
       id: 'heritage-couture',
       badge: 'Haute Couture 2026',
       title: 'Where Royal Weaves Meet Sharp Sartorial Lines',
-      subtitle: 'Pure Banarasi zari silk sarees, hand-embroidered bridal lehengas, and sand-washed tailoring.',
-      image: 'images/hero-banner.jpg',
-      ctaText: 'Explore Collection',
-      ctaLink: 'shop.html?col=wedding'
+      subtitle: 'Pure Banarasi zari, hand-pleated satin, and bespoke modern pret tailored for grand entrances.',
+      cta: 'Explore The Atelier',
+      link: 'shop.html',
+      secondaryCta: 'Curated Wedding Edit',
+      secondaryLink: 'collections.html?c=wedding',
+      bg: 'linear-gradient(135deg, rgba(91,24,53,0.92) 0%, rgba(28,23,21,0.95) 100%)'
     },
     {
-      id: 'wedding-edit',
-      badge: 'The Trousseau Edit',
-      title: 'Regal Banarasi & Zardozi Craft',
-      subtitle: 'Heirloom weaves and 16-kali flared lehengas crafted by master Varanasi weavers.',
-      image: 'images/wedding-edit.jpg',
-      ctaText: 'View Bridal Creations',
-      ctaLink: 'shop.html?col=wedding'
-    },
-    {
-      id: 'sartorial-pret',
-      badge: 'Contemporary Pret',
-      title: 'Sartorial Linen & Fluid Satin',
-      subtitle: 'Italian peaked lapels, sand houndstooth checks, and effortless day-to-evening dresses.',
-      image: 'images/p9.jpg',
-      ctaText: 'Discover Tailoring',
-      ctaLink: 'shop.html?cat=western'
+      id: 'festive-chanderi',
+      badge: 'Festive Capsule',
+      title: 'Aangan Festive & Heirloom Chanderi',
+      subtitle: 'Lustrous silks illuminated by hand-block gold foil and delicate gota patti borders.',
+      cta: 'Discover Festive Edit',
+      link: 'shop.html?col=festive',
+      secondaryCta: 'View Lookbook',
+      secondaryLink: 'collections.html?c=festive',
+      bg: 'linear-gradient(135deg, rgba(198,161,91,0.9) 0%, rgba(91,24,53,0.95) 100%)'
     }
   ]);
 });
 
-app.get('/api/collections', async (req, res) => {
-  const collections = [
+app.get('/api/collections', (req, res) => {
+  res.json([
     {
       key: 'wedding',
-      name: 'Wedding Edit',
-      tagline: 'The Royal Trousseau',
-      text: 'Royal Banarasi silk sarees, bridal lehengas and gold zari sets.',
-      img: 'images/wedding-edit.jpg'
+      name: 'The Royal Banarasi & Wedding Edit',
+      tagline: 'Imperial silhouettes woven with pure gold zari threads.',
+      image: 'images/wedding-edit.jpg',
+      badge: 'Bridal Couture'
     },
     {
       key: 'festive',
-      name: 'Festive Wear',
-      tagline: 'Artisanal Celebrations',
-      text: 'Heritage bandhani, lustrous satin and antique gold craft.',
-      img: 'images/p4.jpg'
+      name: 'Noor-e-Zari Festive Capsule',
+      tagline: 'Heirloom bandhani and molten tissue silk for gala evenings.',
+      image: 'images/p4.jpg',
+      badge: 'Festive Pret'
     },
     {
       key: 'everyday',
-      name: 'Everyday Cotton',
-      tagline: 'Pure & Breathable',
-      text: 'Breathable Mulmul hand-block prints and pure Chanderi kurtas.',
-      img: 'images/p5.jpg'
+      name: 'Aangan Breathable Chanderi',
+      tagline: 'Featherlight pure Mulmul hand-block prints and timeless kurtas.',
+      image: 'images/p5.jpg',
+      badge: 'Artisanal Pret'
     },
     {
       key: 'work',
-      name: 'Work Wardrobe',
-      tagline: 'Sartorial Elegance',
-      text: 'Sartorial linen check blazers and pleated crepe tailoring.',
-      img: 'images/p9.jpg'
+      name: 'Sovereign Sartorial Suiting',
+      tagline: 'Sharp checkered linen blazers and pleated crepe silhouettes.',
+      image: 'images/p9.jpg',
+      badge: 'Contemporary Pret'
     }
-  ];
-
-  try {
-    for (const c of collections) {
-      const countRes = await db.query('SELECT COUNT(*)::int AS count FROM products WHERE col = $1;', [c.key]);
-      c.count = countRes.rows[0].count;
-    }
-  } catch {
-    collections.forEach(c => c.count = 3);
-  }
-
-  res.json(collections);
+  ]);
 });
 
 app.post('/api/newsletter', (req, res) => {
-  const { email } = req.body;
+  const { email } = req.body || {};
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-    return res.status(400).json({ error: 'Valid email address required.' });
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
   }
-  res.json({ ok: true, message: 'Welcome to the SATINOSTITCH VIP Atelier private list.' });
+  res.json({
+    ok: true,
+    message: 'Welcome to the SATINOSTITCH VIP Atelier. Your invitation and styling dispatch have been sent.'
+  });
 });
 
 /* ==========================================================================
-   Module 2: Products & Catalogue (CRUD & Image Uploads)
+   Module 2: Product Catalogue, Search, Filters & Categories
    ========================================================================== */
 app.get('/api/categories', async (req, res) => {
   try {
     const categories = await db.getCategories();
     res.json(categories);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch categories.' });
+    console.error('[API] Categories error:', err);
+    res.json([
+      { id: 1, slug: 'ethnic', name: 'Ethnic Couture', count: 7 },
+      { id: 2, slug: 'western', name: 'Western Pret', count: 5 }
+    ]);
+  }
+});
+
+// Category Admin CRUD
+app.post('/api/categories', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { slug, name, description } = req.body || {};
+    if (!slug || !name) {
+      return res.status(400).json({ error: 'Category slug and name are required.' });
+    }
+    const cat = await db.createCategory({ slug, name, description });
+    res.status(201).json(cat);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/categories/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid category ID' });
+  try {
+    const updated = await db.updateCategory(id, req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Category not found.' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/categories/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid category ID' });
+  try {
+    const deleted = await db.deleteCategory(id);
+    if (!deleted) return res.status(404).json({ error: 'Category not found.' });
+    res.json({ ok: true, message: `Category ${id} deleted.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -212,35 +245,40 @@ app.get('/api/types', async (req, res) => {
   try {
     const types = await db.getTypes();
     res.json(types);
-  } catch {
-    const fallbackTypes = [...new Set(loadFallbackProducts().map(p => p.type))].sort();
-    res.json(fallbackTypes);
+  } catch (err) {
+    res.json(['Suit sets', 'Kurtas', 'Sarees', 'Lehengas', 'Dresses', 'Tops & blazers', 'Bottoms']);
   }
 });
 
 app.get('/api/products', async (req, res) => {
+  const { cat, col, type, q, max, min, sort, inStock } = req.query;
+
   try {
-    const products = await db.getProducts(req.query);
+    const products = await db.getProducts({
+      category: cat,
+      collection: col,
+      type,
+      search: q,
+      maxPrice: max,
+      minPrice: min,
+      sort,
+      inStock: inStock === 'true' || inStock === '1'
+    });
     res.json(products);
   } catch (err) {
-    console.warn('[PostgreSQL] Product fetch fallback:', err.message);
-    const { cat, col, type, q, search, max, sort } = req.query;
-    let items = loadFallbackProducts().filter(p => {
-      const matchCat = !cat || cat === 'all' || p.cat === cat;
-      const matchCol = !col || col === 'all' || p.col === col;
-      const matchType = !type || type === 'all' || p.type === type;
-      const maxPrice = Number(max);
-      const matchPrice = isNaN(maxPrice) || p.price <= maxPrice;
-      const searchTerm = (q || search || '').trim().toLowerCase();
-      const matchSearch = !searchTerm || (p.name + p.type + p.fabric + (p.desc || '')).toLowerCase().includes(searchTerm);
-      return matchCat && matchCol && matchType && matchPrice && matchSearch;
-    });
-
-    if (sort === 'low') items.sort((a, b) => a.price - b.price);
-    if (sort === 'high') items.sort((a, b) => b.price - a.price);
-    if (sort === 'rating') items.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-
-    res.json(items);
+    console.warn('[PostgreSQL] Fallback to in-memory catalog:', err.message);
+    let list = loadFallbackProducts();
+    if (cat) list = list.filter(p => p.cat === cat);
+    if (col) list = list.filter(p => p.col === col);
+    if (type) list = list.filter(p => p.type === type);
+    if (max) list = list.filter(p => p.price <= Number(max));
+    if (q) {
+      const term = q.toLowerCase();
+      list = list.filter(p => p.name.toLowerCase().includes(term) || (p.fabric && p.fabric.toLowerCase().includes(term)));
+    }
+    if (sort === 'low') list.sort((a, b) => a.price - b.price);
+    else if (sort === 'high') list.sort((a, b) => b.price - a.price);
+    res.json(list);
   }
 });
 
@@ -259,28 +297,33 @@ app.get('/api/products/:id', async (req, res) => {
   res.status(404).json({ error: 'Product not found' });
 });
 
-// Product CRUD: Create Product (Admin / Atelier)
-app.post('/api/products', optionalAuth, async (req, res) => {
+// Product CRUD (Admin / Curator Protected)
+app.post('/api/products', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, cat, type, col, price, old, fabric, desc, image, stock, c1, c2, pat, tag, sizes, colors } = req.body;
+    const { name, cat, type, col, price, old, fabric, desc, image, stock, c1, c2, pat, tag, sizes, colors } = req.body || {};
     if (!name || !price) {
-      return res.status(400).json({ error: 'Name and price are required.' });
+      return res.status(400).json({ error: 'Garment name and active selling price are required.' });
     }
+    const numPrice = Number(price);
+    if (isNaN(numPrice) || numPrice <= 0) {
+      return res.status(400).json({ error: 'Price must be a positive numeric value.' });
+    }
+
     const newProduct = await db.createProduct({
-      name,
+      name: name.trim(),
       cat: cat || 'ethnic',
       type: type || 'Suit sets',
       col: col || 'everyday',
-      price: Number(price),
+      price: numPrice,
       old: old ? Number(old) : null,
-      fabric,
-      desc,
+      fabric: fabric || 'Pure handwoven textile',
+      desc: desc || '',
       image: image || 'images/p1.jpg',
-      stock: stock ? Number(stock) : 10,
+      stock: stock != null ? Math.max(0, parseInt(stock, 10)) : 10,
       c1: c1 || '#5B1835',
       c2: c2 || '#C6A15B',
       pat: pat || 'plain',
-      tag: tag || 'New',
+      tag: tag || 'New Arrival',
       sizes: sizes || ['XS', 'S', 'M', 'L', 'XL'],
       colors: colors || [{ name: 'Primary Shade', hex: c1 || '#5B1835' }]
     });
@@ -291,13 +334,12 @@ app.post('/api/products', optionalAuth, async (req, res) => {
   }
 });
 
-// Product CRUD: Update Product
-app.put('/api/products/:id', optionalAuth, async (req, res) => {
+app.put('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
 
   try {
-    const updated = await db.updateProduct(id, req.body);
+    const updated = await db.updateProduct(id, req.body || {});
     if (!updated) return res.status(404).json({ error: 'Product not found' });
     res.json(updated);
   } catch (err) {
@@ -306,8 +348,7 @@ app.put('/api/products/:id', optionalAuth, async (req, res) => {
   }
 });
 
-// Product CRUD: Delete Product
-app.delete('/api/products/:id', optionalAuth, async (req, res) => {
+app.delete('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
 
@@ -320,8 +361,8 @@ app.delete('/api/products/:id', optionalAuth, async (req, res) => {
   }
 });
 
-// Image Upload Endpoint (Multer)
-app.post('/api/upload', upload.single('image'), (req, res) => {
+// Image Upload Endpoint (Multer with Authenticated Access)
+app.post('/api/upload', authenticateToken, upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No image file uploaded.' });
   }
@@ -332,6 +373,33 @@ app.post('/api/upload', upload.single('image'), (req, res) => {
     filename: req.file.filename,
     size: req.file.size
   });
+});
+
+/* ==========================================================================
+   Inventory Management (Admin)
+   ========================================================================== */
+app.get('/api/inventory', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const data = await db.getInventorySummary();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/products/:id/stock', authenticateToken, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { stock } = req.body || {};
+  if (isNaN(id) || stock == null) {
+    return res.status(400).json({ error: 'Valid product ID and stock count are required.' });
+  }
+  try {
+    const updated = await db.setProductStock(id, stock);
+    if (!updated) return res.status(404).json({ error: 'Product not found.' });
+    res.json({ ok: true, ...updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* ==========================================================================
@@ -353,166 +421,446 @@ app.post('/api/products/:id/reviews', optionalAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
 
-  const { name, rating, title, comment } = req.body;
-  const numRating = Number(rating);
-  if (!comment || isNaN(numRating) || numRating < 1 || numRating > 5) {
-    return res.status(400).json({ error: 'Please provide a valid rating (1-5) and feedback comment.' });
+  const { rating, title, comment, name } = req.body || {};
+  if (!rating || !comment) {
+    return res.status(400).json({ error: 'Rating (1-5) and review feedback are required.' });
   }
 
-  const userName = req.user ? req.user.name : (name || 'Verified Patron');
-  const userId = req.user ? req.user.id : null;
+  const numRating = parseInt(rating, 10);
+  if (numRating < 1 || numRating > 5) {
+    return res.status(400).json({ error: 'Rating must be an integer between 1 and 5.' });
+  }
 
   try {
+    const authorName = (req.user && req.user.name) || name || 'Verified Patron';
+    const userId = req.user ? req.user.id : null;
+
     const review = await db.createProductReview({
       productId: id,
       userId,
-      userName,
+      userName: authorName,
       rating: numRating,
-      title: title || 'Patron Review',
-      comment
+      title: title || 'Atelier Feedback',
+      comment,
+      verifiedPurchase: !!req.user
     });
+
     res.status(201).json(review);
+  } catch (err) {
+    console.error('[API] Create review error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ==========================================================================
+   Module 4: Customer Cart (Persistent Server-Side)
+   ========================================================================== */
+app.get('/api/cart', authenticateToken, async (req, res) => {
+  try {
+    const items = await db.getUserCart(req.user.id);
+    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+    res.json({
+      ok: true,
+      items,
+      itemCount,
+      subtotal
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/cart', authenticateToken, async (req, res) => {
+  const { productId, size, color, quantity } = req.body || {};
+  if (!productId) {
+    return res.status(400).json({ error: 'Product ID is required.' });
+  }
+
+  try {
+    const item = await db.addToUserCart(req.user.id, {
+      productId: Number(productId),
+      size: size || 'M',
+      color: color || null,
+      quantity: Number(quantity) || 1
+    });
+    res.status(201).json({ ok: true, item });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/cart/:id', authenticateToken, async (req, res) => {
+  const cartItemId = Number(req.params.id);
+  const { quantity } = req.body || {};
+  if (isNaN(cartItemId) || quantity == null) {
+    return res.status(400).json({ error: 'Cart item ID and quantity are required.' });
+  }
+
+  try {
+    const item = await db.updateCartItemQuantity(req.user.id, cartItemId, Number(quantity));
+    res.json({ ok: true, item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/cart/:id', authenticateToken, async (req, res) => {
+  const cartItemId = Number(req.params.id);
+  if (isNaN(cartItemId)) return res.status(400).json({ error: 'Invalid cart item ID.' });
+
+  try {
+    const ok = await db.removeCartItem(req.user.id, cartItemId);
+    res.json({ ok });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/cart', authenticateToken, async (req, res) => {
+  try {
+    await db.clearUserCart(req.user.id);
+    res.json({ ok: true, message: 'Shopping bag cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/cart/sync', authenticateToken, async (req, res) => {
+  const { items } = req.body || {};
+  try {
+    const cart = await db.syncUserCart(req.user.id, items || []);
+    res.json({ ok: true, items: cart });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 /* ==========================================================================
-   Module 4: Cart, Coupons & Checkout
+   Coupons & Promotions (User & Admin)
    ========================================================================== */
 app.get('/api/coupons/:code', async (req, res) => {
-  const code = req.params.code;
+  const code = (req.params.code || '').trim().toUpperCase();
+  const subtotal = Number(req.query.subtotal || 0);
+
   try {
     const coupon = await db.getCouponByCode(code);
-    if (!coupon) {
+    if (!coupon || !coupon.is_active) {
       return res.status(404).json({ error: 'Invalid or expired promotional code.' });
     }
-    res.json(coupon);
+
+    if (subtotal < Number(coupon.min_order_amount)) {
+      return res.status(400).json({
+        error: `Code ${code} requires a minimum order value of ₹${Number(coupon.min_order_amount).toLocaleString('en-IN')}.`
+      });
+    }
+
+    const discountAmount = Math.round((subtotal * coupon.discount_percent) / 100);
+    res.json({
+      valid: true,
+      code: coupon.code,
+      discountPercent: coupon.discount_percent,
+      discountAmount,
+      description: coupon.description
+    });
   } catch (err) {
-    res.status(500).json({ error: 'Coupon verification error.' });
+    res.status(500).json({ error: 'Coupon validation failed.' });
   }
 });
 
-// Order Placement API
-app.post('/api/orders', optionalAuth, async (req, res) => {
-  const { customer, items, promo, shippingAddress, paymentMethod } = req.body || {};
+// Admin Coupon Management
+app.get('/api/admin/coupons', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const coupons = await db.getAllCoupons();
+    res.json(coupons);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  if (!customer || !Array.isArray(items) || !items.length) {
-    return res.status(400).json({ error: 'Customer details and bag items are required.' });
+app.post('/api/admin/coupons', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { code, discountPercent, minOrderAmount, description } = req.body || {};
+    if (!code || !discountPercent) {
+      return res.status(400).json({ error: 'Coupon code and discount percentage are required.' });
+    }
+    const coupon = await db.createCoupon({ code, discountPercent, minOrderAmount, description });
+    res.status(201).json(coupon);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/coupons/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid coupon ID' });
+  try {
+    const updated = await db.updateCoupon(id, req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Coupon not found.' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/coupons/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid coupon ID' });
+  try {
+    const ok = await db.deleteCoupon(id);
+    res.json({ ok });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ==========================================================================
+   Orders, Checkout & Order Management
+   ========================================================================== */
+app.post('/api/orders', optionalAuth, async (req, res) => {
+  const { customer, items, paymentMethod, couponCode } = req.body || {};
+
+  if (!customer || !customer.name || !customer.email || !customer.phone) {
+    return res.status(400).json({ error: 'Complete customer contact details are required.' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(customer.email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  const line1 = customer.line1 || customer.address;
+  const pincode = customer.pincode || customer.pin;
+  if (!line1 || !customer.city || !customer.state || !pincode) {
+    return res.status(400).json({ error: 'Full delivery shipping address is required.' });
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Your shopping bag contains no items.' });
   }
 
   try {
-    // 1. Fetch catalog items to verify live prices and stock
-    let catalog = await db.getProducts();
-    if (!catalog || !catalog.length) catalog = loadFallbackProducts();
-
+    // 1. Validate items and inventory stock
     let subtotal = 0;
     const validatedItems = [];
 
     for (const item of items) {
-      const match = catalog.find(p => p.id === Number(item.id));
-      if (!match) {
-        return res.status(400).json({ error: `Product ID ${item.id} is no longer available in our active catalog.` });
+      const p = await db.getProductById(Number(item.id));
+      if (!p) {
+        return res.status(400).json({ error: `Creations with ID "${item.id}" is no longer in catalog.` });
       }
-      if (match.stock < (item.qty || 1)) {
+      const qty = Math.max(1, parseInt(item.qty, 10) || 1);
+      if (p.stock < qty) {
         return res.status(400).json({
-          error: `Insufficient stock for "${match.name}". Only ${match.stock} available.`
+          error: `Insufficient stock for "${p.name}". Only ${p.stock} piece(s) available in atelier.`
         });
       }
-      const itemPrice = match.price;
-      const qty = item.qty || item.quantity || 1;
-      subtotal += itemPrice * qty;
 
+      const itemTotal = p.price * qty;
+      subtotal += itemTotal;
       validatedItems.push({
-        id: match.id,
-        name: match.name,
-        image: match.image,
-        price: itemPrice,
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        qty,
         size: item.size || 'M',
-        color: item.color || (match.colors?.[0]?.name) || 'Selected Shade',
-        qty
+        color: item.color || null,
+        image: p.image,
+        total: itemTotal
       });
     }
 
-    // 2. Coupon discount verification
+    // 2. Validate Coupon
     let discount = 0;
-    let couponCode = null;
-    const code = (promo || '').trim().toUpperCase();
-    if (code) {
-      const coupon = await db.getCouponByCode(code);
-      if (coupon && subtotal >= Number(coupon.min_order_amount || 0)) {
-        discount = Math.round((subtotal * coupon.discount_percent) / 100);
-        couponCode = coupon.code;
+    const activeCoupon = couponCode || req.body.promo || (customer && customer.promo);
+    if (activeCoupon) {
+      const c = await db.getCouponByCode(String(activeCoupon).toUpperCase().trim());
+      if (c && c.is_active && subtotal >= Number(c.min_order_amount)) {
+        discount = Math.round((subtotal * c.discount_percent) / 100);
       }
     }
 
-    // 3. Shipping fee calculation (Free above ₹3000)
-    const netSubtotal = subtotal - discount;
-    const shippingFee = netSubtotal >= 3000 || netSubtotal === 0 ? 0 : 150;
-    const total = netSubtotal + shippingFee;
+    // 3. Shipping logic: Complimentary over ₹3,000 net, otherwise ₹150
+    const netForShipping = subtotal - discount;
+    const shippingFee = (!subtotal || netForShipping >= 3000) ? 0 : 150;
+    const grandTotal = Math.max(0, netForShipping + shippingFee);
 
-    // 4. Create Order in PostgreSQL
-    const orderData = {
-      userId: req.user ? req.user.id : null,
-      customerName: customer.name || (req.user ? req.user.name : 'Valued Patron'),
-      customerEmail: customer.email || (req.user ? req.user.email : 'patron@example.com'),
-      customerPhone: customer.phone || null,
-      shippingAddress: shippingAddress || {
-        recipient: customer.name,
-        line1: customer.address || customer.street || 'Address on record',
-        city: customer.city || 'City',
-        state: customer.state || 'State',
-        pincode: customer.pincode || customer.zip || '000000',
-        phone: customer.phone
-      },
-      subtotal,
-      discount,
-      couponCode,
-      shippingFee,
-      total,
-      paymentMethod: paymentMethod || customer.payment || 'cod',
-      paymentStatus: (paymentMethod === 'card' || paymentMethod === 'upi') ? 'paid' : 'pending'
+    // 4. Generate Unique Order ID & Courier Tracking Number
+    const orderNumber = 'SS' + Math.floor(1000000 + Math.random() * 9000000);
+    const trackingNumber = 'IND-COUT-' + Math.floor(10000000 + Math.random() * 90000000);
+
+    const shippingAddress = {
+      recipient: customer.name,
+      phone: customer.phone,
+      line1,
+      line2: customer.line2 || '',
+      city: customer.city,
+      state: customer.state,
+      pincode
     };
 
-    const savedOrder = await db.createOrder(orderData, validatedItems);
+    const userId = req.user ? req.user.id : null;
+
+    // 5. Persist order & order items to PostgreSQL
+    const order = await db.createOrder({
+      id: orderNumber,
+      userId,
+      customerName: customer.name,
+      customerEmail: customer.email,
+      customerPhone: customer.phone,
+      shippingAddress,
+      subtotal,
+      discount,
+      couponCode: couponCode || null,
+      shippingFee,
+      total: grandTotal,
+      paymentMethod: paymentMethod || 'cod',
+      paymentStatus: (paymentMethod === 'cod') ? 'pending' : 'paid',
+      status: 'Confirmed',
+      trackingNumber,
+      items: validatedItems
+    });
+
+    // 6. Stock is already atomically decremented inside db.createOrder within the SQL transaction.
+
+    // 7. If user is authenticated, automatically clear their server-side cart
+    if (userId) {
+      await db.clearUserCart(userId).catch(() => {});
+    }
+
     res.status(201).json({
-      id: savedOrder.id,
-      trackingNumber: savedOrder.tracking_number,
-      total: Number(savedOrder.total),
-      subtotal: Number(savedOrder.subtotal),
-      discount: Number(savedOrder.discount),
-      shippingFee: Number(savedOrder.shipping_fee),
-      status: savedOrder.status,
-      estimatedDelivery: savedOrder.estimated_delivery
+      ok: true,
+      message: 'Your order has been officially confirmed and commissioned at the atelier.',
+      order: {
+        id: order.id,
+        trackingNumber: order.tracking_number,
+        total: order.total,
+        status: order.status,
+        estimatedDelivery: order.estimated_delivery
+      }
     });
   } catch (err) {
-    console.error('[API] /api/orders error:', err);
-    res.status(500).json({ error: 'Order placement failed: ' + err.message });
+    console.error('[API] Order placement error:', err);
+    res.status(500).json({ error: err.message || 'Could not process order.' });
   }
 });
 
-// Single Order & Tracking Lookup
-app.get('/api/orders/:id', optionalAuth, async (req, res) => {
-  const orderId = req.params.id;
+app.get('/api/orders/:id', async (req, res) => {
   try {
-    const order = await db.getOrderById(orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    const order = await db.getOrderById(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Admin All Orders Management
+app.get('/api/admin/orders', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const orders = await db.getAllOrders();
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Update Order Status
+app.put('/api/orders/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+  const { status } = req.body || {};
+  if (!status) return res.status(400).json({ error: 'New status is required.' });
+
+  try {
+    const updated = await db.updateOrderStatus(req.params.id, status);
+    if (!updated) return res.status(404).json({ error: 'Order not found.' });
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Customer & Admin: Order Cancellation
+app.post('/api/orders/:id/cancel', optionalAuth, async (req, res) => {
+  const orderId = req.params.id;
+  const { reason } = req.body || {};
+
+  try {
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+    if (order.status !== 'Confirmed' && order.status !== 'In Atelier') {
+      return res.status(400).json({
+        error: `Order cannot be cancelled in status "${order.status}". Dispatched orders may be returned after delivery.`
+      });
+    }
+
+    const updated = await db.updateOrderStatus(orderId, 'Cancelled', {
+      cancelReason: reason || 'Cancelled by patron request'
+    });
+
+    // Restock items in PostgreSQL
+    if (order.items && order.items.length) {
+      for (const item of order.items) {
+        if (item.product_id) {
+          await db.updateProductStock(item.product_id, item.quantity);
+        }
+      }
+    }
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Customer Order Return
+app.post('/api/orders/:id/return', optionalAuth, async (req, res) => {
+  const orderId = req.params.id;
+  const { reason } = req.body || {};
+
+  try {
+    const order = await db.getOrderById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+    if (order.status !== 'Delivered') {
+      return res.status(400).json({
+        error: `Return requests are only eligible for delivered garments. Current status: ${order.status}`
+      });
+    }
+
+    const updated = await db.updateOrderStatus(orderId, 'Return Requested', {
+      returnReason: reason || 'Return initiated by patron'
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ==========================================================================
-   Module 5: Customer Account, Authentication, Profiles, Addresses & Orders
-   ========================================================================== */
+   Module 5: Customer Authentication, Profiles, Addresses & RBAC
+   ========================================================================= */
+
+// Public Registration: Strictly customer-only (Public admin registration disabled)
 app.post('/api/auth/register', async (req, res) => {
-  const { name, email, password, phone } = req.body;
+  const { name, email, password, phone, role } = req.body || {};
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Full name, email, and password are required.' });
   }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
   if (password.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  // Security Check: Public admin registration is strictly disabled!
+  if (role && String(role).toLowerCase() === 'admin') {
+    return res.status(403).json({ error: 'Public registration for administrator privileges is forbidden.' });
   }
 
   try {
@@ -522,7 +870,15 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await db.createUser({ name, email, passwordHash, phone });
+    // Force role to 'customer' for all public registrations
+    const user = await db.createUser({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      passwordHash,
+      phone: phone || null,
+      role: 'customer'
+    });
+
     const token = generateToken(user);
 
     res.status(201).json({
@@ -541,8 +897,9 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// Authentication: Login
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
@@ -588,9 +945,33 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 
 app.put('/api/auth/profile', authenticateToken, async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone } = req.body || {};
     const updated = await db.updateUserProfile(req.user.id, { name, phone });
     res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Password Change
+app.put('/api/auth/password', authenticateToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required.' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+  }
+
+  try {
+    const user = await db.getUserByEmail(req.user.email);
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Current password does not match.' });
+    }
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await db.updateUserPassword(req.user.id, newHash);
+    res.json({ ok: true, message: 'Password updated successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -608,7 +989,7 @@ app.get('/api/user/addresses', authenticateToken, async (req, res) => {
 
 app.post('/api/user/addresses', authenticateToken, async (req, res) => {
   try {
-    const addr = await db.createUserAddress(req.user.id, req.body);
+    const addr = await db.createUserAddress(req.user.id, req.body || {});
     res.status(201).json(addr);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -624,7 +1005,7 @@ app.delete('/api/user/addresses/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Customer Order History & Tracking
+// Customer Order History
 app.get('/api/user/orders', authenticateToken, async (req, res) => {
   try {
     const orders = await db.getUserOrders(req.user.id);
@@ -634,66 +1015,7 @@ app.get('/api/user/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// Order Actions: Cancellation
-app.post('/api/orders/:id/cancel', optionalAuth, async (req, res) => {
-  const orderId = req.params.id;
-  const { reason } = req.body;
-
-  try {
-    const order = await db.getOrderById(orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found.' });
-
-    if (order.status !== 'Confirmed' && order.status !== 'In Atelier') {
-      return res.status(400).json({
-        error: `Order cannot be cancelled in status "${order.status}". Dispatched orders may be returned after delivery.`
-      });
-    }
-
-    const updated = await db.updateOrderStatus(orderId, 'Cancelled', {
-      cancelReason: reason || 'Cancelled by patron request'
-    });
-
-    // Restock items
-    if (order.items && order.items.length) {
-      for (const item of order.items) {
-        if (item.product_id) {
-          await db.updateProductStock(item.product_id, item.quantity);
-        }
-      }
-    }
-
-    res.json({ ok: true, order: updated });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Order Actions: Return Request
-app.post('/api/orders/:id/return', optionalAuth, async (req, res) => {
-  const orderId = req.params.id;
-  const { reason } = req.body;
-
-  try {
-    const order = await db.getOrderById(orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found.' });
-
-    if (order.status !== 'Delivered') {
-      return res.status(400).json({
-        error: `Return requests are only eligible for delivered garments. Current status: ${order.status}`
-      });
-    }
-
-    const updated = await db.updateOrderStatus(orderId, 'Return Requested', {
-      returnReason: reason || 'Return initiated by patron'
-    });
-
-    res.json({ ok: true, order: updated });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Customer Wishlist Sync with DB
+// Wishlist
 app.get('/api/user/wishlist', authenticateToken, async (req, res) => {
   try {
     const list = await db.getUserWishlist(req.user.id);
@@ -704,7 +1026,7 @@ app.get('/api/user/wishlist', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/user/wishlist', authenticateToken, async (req, res) => {
-  const { productId } = req.body;
+  const { productId } = req.body || {};
   if (!productId) return res.status(400).json({ error: 'Product ID required.' });
   try {
     await db.addToWishlist(req.user.id, Number(productId));
@@ -723,6 +1045,31 @@ app.delete('/api/user/wishlist/:productId', authenticateToken, async (req, res) 
   }
 });
 
+// User Administration (Admin Only)
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const users = await db.getAllUsers();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/users/:id/role', authenticateToken, requireAdmin, async (req, res) => {
+  const userId = Number(req.params.id);
+  const { role } = req.body || {};
+  if (!role || !['customer', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'Valid role ("customer" or "admin") is required.' });
+  }
+  try {
+    const updated = await db.updateUserRole(userId, role);
+    if (!updated) return res.status(404).json({ error: 'User not found.' });
+    res.json({ ok: true, user: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Contact inquiry submission
 app.post('/api/contact', (req, res) => {
   const { name, email, message } = req.body || {};
@@ -732,9 +1079,22 @@ app.post('/api/contact', (req, res) => {
   res.json({ ok: true });
 });
 
+/* ==========================================================================
+   Centralized Error Handling & 404 Route Handling
+   ========================================================================== */
+
 // 404 handler for undefined API routes
 app.use('/api', (req, res) => {
-  res.status(404).json({ error: 'API endpoint not found' });
+  res.status(404).json({ error: `API route ${req.method} ${req.originalUrl} not found.` });
+});
+
+// Centralized error handler
+app.use((err, req, res, next) => {
+  console.error('[Atelier Server Error]', err.stack || err.message || err);
+  const status = err.status || 500;
+  res.status(status).json({
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error occurred.' : (err.message || 'Server error.')
+  });
 });
 
 // Start application server & auto-initialize database

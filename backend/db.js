@@ -90,7 +90,16 @@ function mapProductRow(row) {
 /* ==========================================================================
    Products & Catalog Queries
    ========================================================================== */
-async function getProducts({ cat, col, type, q, search, max, min, sort, in_stock } = {}) {
+async function getProducts(filters = {}) {
+  const cat = filters.cat || filters.category;
+  const col = filters.col || filters.collection;
+  const type = filters.type;
+  const in_stock = filters.in_stock != null ? filters.in_stock : filters.inStock;
+  const q = filters.q || filters.search;
+  const max = filters.max != null ? filters.max : filters.maxPrice;
+  const min = filters.min != null ? filters.min : filters.minPrice;
+  const sort = filters.sort;
+
   const conditions = [];
   const values = [];
 
@@ -109,11 +118,11 @@ async function getProducts({ cat, col, type, q, search, max, min, sort, in_stock
     conditions.push(`p.type = $${values.length}`);
   }
 
-  if (in_stock === 'true' || in_stock === true) {
+  if (in_stock === 'true' || in_stock === true || in_stock === 1 || in_stock === '1') {
     conditions.push(`p.stock > 0`);
   }
 
-  const searchTerm = (q || search || '').trim();
+  const searchTerm = (q || '').trim();
   if (searchTerm) {
     values.push(`%${searchTerm}%`);
     const idx = values.length;
@@ -465,8 +474,9 @@ async function createOrder(orderData, items) {
   try {
     await client.query('BEGIN');
 
-    const orderId = 'SS' + Date.now().toString().slice(-7);
-    const trackingNumber = 'TRK-SS-' + Math.floor(100000 + Math.random() * 900000);
+    const orderId = orderData.id || ('SS' + Date.now().toString().slice(-7));
+    const trackingNumber = orderData.trackingNumber || ('TRK-SS-' + Math.floor(100000 + Math.random() * 900000));
+    const lineItems = items || orderData.items || [];
 
     const insertOrderSql = `
       INSERT INTO orders (
@@ -503,7 +513,7 @@ async function createOrder(orderData, items) {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
     `;
 
-    for (const item of items) {
+    for (const item of lineItems) {
       await client.query(insertItemSql, [
         orderId,
         item.id || null,
@@ -658,6 +668,272 @@ async function removeFromWishlist(userId, productId) {
   return true;
 }
 
+/* ==========================================================================
+   User Cart Queries (Module 4)
+   ========================================================================== */
+async function getUserCart(userId) {
+  const sql = `
+    SELECT 
+      ci.id,
+      ci.user_id,
+      ci.product_id,
+      ci.size,
+      ci.color,
+      ci.quantity,
+      ci.created_at,
+      ci.updated_at,
+      p.name,
+      p.price::numeric AS price,
+      p.old_price::numeric AS old_price,
+      p.image,
+      p.stock,
+      p.fabric,
+      p.cat,
+      (p.price * ci.quantity)::numeric AS line_total
+    FROM cart_items ci
+    JOIN products p ON ci.product_id = p.id
+    WHERE ci.user_id = $1
+    ORDER BY ci.created_at ASC;
+  `;
+  const res = await pool.query(sql, [userId]);
+  return res.rows.map(r => ({
+    id: Number(r.id),
+    userId: Number(r.user_id),
+    productId: Number(r.product_id),
+    name: r.name,
+    size: r.size,
+    color: r.color,
+    quantity: Number(r.quantity),
+    price: Number(r.price),
+    oldPrice: r.old_price ? Number(r.old_price) : null,
+    image: r.image,
+    stock: Number(r.stock),
+    fabric: r.fabric,
+    cat: r.cat,
+    lineTotal: Number(r.line_total),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+}
+
+async function addToUserCart(userId, { productId, size = 'M', color = null, quantity = 1 }) {
+  const numPid = Number(productId);
+  const numQty = Math.max(1, Number(quantity) || 1);
+  const safeColor = color || 'Selected Shade';
+  const safeSize = size || 'M';
+
+  const p = await getProductById(numPid);
+  if (!p) throw new Error('Product not found.');
+  if (p.stock <= 0) throw new Error('Selected garment is currently sold out.');
+
+  const sql = `
+    INSERT INTO cart_items (user_id, product_id, size, color, quantity)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (user_id, product_id, size, color)
+    DO UPDATE SET 
+      quantity = cart_items.quantity + EXCLUDED.quantity,
+      updated_at = NOW()
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [userId, numPid, safeSize, safeColor, numQty]);
+  return res.rows[0];
+}
+
+async function updateCartItemQuantity(userId, cartItemId, quantity) {
+  const numQty = Number(quantity);
+  if (numQty <= 0) {
+    await pool.query('DELETE FROM cart_items WHERE id = $1 AND user_id = $2;', [cartItemId, userId]);
+    return null;
+  }
+  const sql = `
+    UPDATE cart_items
+    SET quantity = $1, updated_at = NOW()
+    WHERE id = $2 AND user_id = $3
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [numQty, cartItemId, userId]);
+  return res.rows[0] || null;
+}
+
+async function removeCartItem(userId, cartItemId) {
+  const sql = `DELETE FROM cart_items WHERE id = $1 AND user_id = $2 RETURNING id;`;
+  const res = await pool.query(sql, [cartItemId, userId]);
+  return res.rowCount > 0;
+}
+
+async function clearUserCart(userId) {
+  await pool.query('DELETE FROM cart_items WHERE user_id = $1;', [userId]);
+  return true;
+}
+
+async function syncUserCart(userId, guestItems = []) {
+  if (!Array.isArray(guestItems) || !guestItems.length) return getUserCart(userId);
+  for (const item of guestItems) {
+    if (item && item.id) {
+      try {
+        await addToUserCart(userId, {
+          productId: item.id,
+          size: item.size || 'M',
+          color: item.color || null,
+          quantity: item.qty || 1
+        });
+      } catch {}
+    }
+  }
+  return getUserCart(userId);
+}
+
+/* ==========================================================================
+   Inventory & Category Management (Admin)
+   ========================================================================== */
+async function getInventorySummary() {
+  const statsSql = `
+    SELECT 
+      COUNT(*)::int AS total_products,
+      COALESCE(SUM(stock), 0)::int AS total_stock,
+      COUNT(*) FILTER (WHERE stock <= 3 AND stock > 0)::int AS low_stock_count,
+      COUNT(*) FILTER (WHERE stock = 0)::int AS out_of_stock_count
+    FROM products;
+  `;
+  const itemsSql = `
+    SELECT id, name, cat, type, price, stock, image
+    FROM products
+    ORDER BY stock ASC, id ASC;
+  `;
+  const [statsRes, itemsRes] = await Promise.all([
+    pool.query(statsSql),
+    pool.query(itemsSql)
+  ]);
+  return {
+    summary: statsRes.rows[0],
+    items: itemsRes.rows.map(r => ({
+      ...r,
+      id: Number(r.id),
+      price: Number(r.price),
+      stock: Number(r.stock)
+    }))
+  };
+}
+
+async function setProductStock(productId, stock) {
+  const numStock = Math.max(0, parseInt(stock, 10) || 0);
+  const sql = `UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, stock;`;
+  const res = await pool.query(sql, [numStock, productId]);
+  return res.rows[0] || null;
+}
+
+async function createCategory({ slug, name, description }) {
+  const sql = `
+    INSERT INTO categories (slug, name, description)
+    VALUES ($1, $2, $3)
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [slug.toLowerCase().trim(), name.trim(), description || '']);
+  return res.rows[0];
+}
+
+async function updateCategory(id, { name, description }) {
+  const sql = `
+    UPDATE categories
+    SET 
+      name = COALESCE($1, name),
+      description = COALESCE($2, description)
+    WHERE id = $3
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [name ? name.trim() : null, description, id]);
+  return res.rows[0] || null;
+}
+
+async function deleteCategory(id) {
+  const res = await pool.query('DELETE FROM categories WHERE id = $1 RETURNING id;', [id]);
+  return res.rowCount > 0;
+}
+
+/* ==========================================================================
+   Coupon Management (Admin)
+   ========================================================================== */
+async function getAllCoupons() {
+  const sql = `SELECT * FROM coupons ORDER BY created_at DESC;`;
+  const res = await pool.query(sql);
+  return res.rows.map(r => ({
+    id: Number(r.id),
+    code: r.code,
+    discountPercent: Number(r.discount_percent),
+    minOrderAmount: Number(r.min_order_amount || 0),
+    isActive: !!r.is_active,
+    description: r.description,
+    createdAt: r.created_at
+  }));
+}
+
+async function createCoupon({ code, discountPercent, minOrderAmount = 0, description = '' }) {
+  const sql = `
+    INSERT INTO coupons (code, discount_percent, min_order_amount, description)
+    VALUES ($1, $2, $3, $4)
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [
+    code.toUpperCase().trim(),
+    Number(discountPercent),
+    Number(minOrderAmount) || 0,
+    description
+  ]);
+  return res.rows[0];
+}
+
+async function updateCoupon(id, { discountPercent, minOrderAmount, isActive, description }) {
+  const sql = `
+    UPDATE coupons
+    SET 
+      discount_percent = COALESCE($1, discount_percent),
+      min_order_amount = COALESCE($2, min_order_amount),
+      is_active = COALESCE($3, is_active),
+      description = COALESCE($4, description)
+    WHERE id = $5
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [discountPercent, minOrderAmount, isActive, description, id]);
+  return res.rows[0] || null;
+}
+
+async function deleteCoupon(id) {
+  const res = await pool.query('DELETE FROM coupons WHERE id = $1 RETURNING id;', [id]);
+  return res.rowCount > 0;
+}
+
+/* ==========================================================================
+   User & Patron Administration (Security & RBAC)
+   ========================================================================== */
+async function getAllUsers() {
+  const sql = `
+    SELECT id, name, email, phone, role, created_at, updated_at
+    FROM users
+    ORDER BY id ASC;
+  `;
+  const res = await pool.query(sql);
+  return res.rows.map(r => ({
+    id: Number(r.id),
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    role: r.role,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+}
+
+async function updateUserRole(userId, role) {
+  const sql = `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, email, role;`;
+  const res = await pool.query(sql, [role, userId]);
+  return res.rows[0] || null;
+}
+
+async function updateUserPassword(userId, newPasswordHash) {
+  await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2;', [newPasswordHash, userId]);
+  return true;
+}
+
 module.exports = {
   pool,
   query,
@@ -672,16 +948,30 @@ module.exports = {
   updateProductStock,
   getCategories,
   getTypes,
+  // Categories (Admin)
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  // Inventory
+  getInventorySummary,
+  setProductStock,
   // Reviews
   getProductReviews,
   createProductReview,
   // Coupons
   getCouponByCode,
+  getAllCoupons,
+  createCoupon,
+  updateCoupon,
+  deleteCoupon,
   // Users & Auth
   createUser,
   getUserByEmail,
   getUserById,
   updateUserProfile,
+  getAllUsers,
+  updateUserRole,
+  updateUserPassword,
   // Addresses
   getUserAddresses,
   createUserAddress,
@@ -695,5 +985,12 @@ module.exports = {
   // Wishlist
   getUserWishlist,
   addToWishlist,
-  removeFromWishlist
+  removeFromWishlist,
+  // Cart
+  getUserCart,
+  addToUserCart,
+  updateCartItemQuantity,
+  removeCartItem,
+  clearUserCart,
+  syncUserCart
 };
