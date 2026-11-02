@@ -28,17 +28,106 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   /* ---------- Local Storage & Session State ---------- */
+  let activeWishlist = null; // in-memory cache of product IDs for active user
+
   const db = {
     get: (k, d) => { try { return JSON.parse(localStorage.getItem('ss_' + k)) ?? d; } catch { return d; } },
     set: (k, v) => { localStorage.setItem('ss_' + k, JSON.stringify(v)); updateCounts(); },
     token: () => localStorage.getItem('ss_token') || '',
     setToken: (t) => localStorage.setItem('ss_token', t),
+    user: () => { try { return JSON.parse(localStorage.getItem('ss_user')); } catch { return null; } },
+
+    // User-scoped Wishlist methods (only the signed-in user who saved items can see them)
+    getWishlist: () => {
+      const u = db.user();
+      if (!u || !db.token()) return [];
+      if (activeWishlist !== null) return activeWishlist;
+      try {
+        const stored = JSON.parse(localStorage.getItem(`ss_wish_${u.id}`));
+        if (Array.isArray(stored)) {
+          activeWishlist = stored.map(Number);
+          return activeWishlist;
+        }
+      } catch {}
+      activeWishlist = [];
+      return activeWishlist;
+    },
+    setWishlist: (ids) => {
+      const u = db.user();
+      if (!u || !db.token()) {
+        activeWishlist = [];
+        return;
+      }
+      activeWishlist = Array.isArray(ids) ? ids.map(Number) : [];
+      localStorage.setItem(`ss_wish_${u.id}`, JSON.stringify(activeWishlist));
+      updateCounts();
+    },
+    isWishlisted: (id) => {
+      return db.getWishlist().includes(Number(id));
+    },
+    clearGuestWishlist: () => {
+      localStorage.removeItem('ss_wish');
+      activeWishlist = [];
+      updateCounts();
+    },
     clearAuth: () => {
       localStorage.removeItem('ss_token');
       localStorage.removeItem('ss_user');
+      localStorage.removeItem('ss_wish');
+      activeWishlist = [];
       updateCounts();
+      updateWishlistUI();
     }
   };
+
+  async function syncUserWishlist() {
+    const u = db.user();
+    if (!u || !db.token()) {
+      activeWishlist = [];
+      updateCounts();
+      updateWishlistUI();
+      return [];
+    }
+    try {
+      const res = await fetchAuth('/api/user/wishlist');
+      if (res.ok) {
+        const list = await res.json();
+        const ids = Array.isArray(list) ? list.map(p => Number(p.id)) : [];
+        db.setWishlist(ids);
+        updateWishlistUI();
+        return ids;
+      }
+    } catch (err) {
+      console.warn('Could not sync wishlist with server:', err);
+    }
+    return db.getWishlist();
+  }
+
+  function updateWishlistUI() {
+    const list = db.getWishlist();
+    $$('[data-wish]').forEach(btn => {
+      const pid = Number(btn.dataset.wish);
+      const on = list.includes(pid);
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-pressed', on);
+      const svg = btn.querySelector('svg');
+      if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
+    });
+    const pdpWish = $('#wish');
+    if (pdpWish) {
+      const urlParams = new URLSearchParams(location.search);
+      const pid = Number(urlParams.get('id') || 1);
+      const on = list.includes(pid);
+      pdpWish.textContent = on ? 'Saved to Wishlist' : 'Save to Wishlist';
+      pdpWish.setAttribute('aria-pressed', on);
+    }
+    const qvWish = $('#qv-wish');
+    if (qvWish && window._qvProductId) {
+      const on = list.includes(Number(window._qvProductId));
+      qvWish.textContent = on ? 'Saved to Wishlist' : 'Save to Wishlist';
+      qvWish.setAttribute('aria-pressed', on);
+    }
+  }
 
   async function fetchAuth(url, opts = {}) {
     opts.headers = opts.headers || {};
@@ -238,7 +327,7 @@
   }
 
   function updateCounts() {
-    const wish = db.get('wish', []).length;
+    const wish = db.getWishlist().length;
     const cart = db.get('cart', []).reduce((s, i) => s + (i.qty || 1), 0);
     $$('[data-count=wish]').forEach(b => b.textContent = wish);
     $$('[data-count=cart]').forEach(b => b.textContent = cart);
@@ -280,16 +369,26 @@
   }
 
   function toggleWish(id) {
-    const w = db.get('wish', []);
-    const on = !w.includes(id);
-    db.set('wish', on ? [...w, id] : w.filter(x => x !== id));
-    // If logged in, sync with PostgreSQL
-    if (db.token()) {
-      fetchAuth(on ? '/api/user/wishlist' : `/api/user/wishlist/${id}`, {
-        method: on ? 'POST' : 'DELETE',
-        body: on ? { productId: id } : undefined
-      }).catch(() => {});
+    const u = db.user();
+    if (!u || !db.token()) {
+      toast('Please sign in to save creations to your personal trousseau wishlist.', 'login.html', 'Sign In');
+      return null;
     }
+    const numId = Number(id);
+    const list = db.getWishlist();
+    const on = !list.includes(numId);
+    const updated = on ? [...list, numId] : list.filter(x => x !== numId);
+    db.setWishlist(updated);
+    updateWishlistUI();
+
+    // Persist to PostgreSQL database for this authenticated user
+    fetchAuth(on ? '/api/user/wishlist' : `/api/user/wishlist/${numId}`, {
+      method: on ? 'POST' : 'DELETE',
+      body: on ? { productId: numId } : undefined
+    }).catch(err => {
+      console.error('Wishlist sync error:', err);
+    });
+
     return on;
   }
 
@@ -351,7 +450,7 @@
 
   // Product card renderer
   function card(p) {
-    const on = db.get('wish', []).includes(p.id);
+    const on = db.isWishlisted(p.id);
     const href = `product.html?id=${p.id}`;
     const imgSrc = p.image || 'images/p1.jpg';
     const discount = p.old ? Math.round(((p.old - p.price) / p.old) * 100) : null;
@@ -392,9 +491,10 @@
   function openQuickView(id) {
     const p = byId(id);
     if (!p) return;
+    window._qvProductId = p.id;
     const modal = $('#quick-view-modal');
     if (!modal) return;
-    const on = db.get('wish', []).includes(p.id);
+    const on = db.isWishlisted(p.id);
     const sizes = p.sizes || ['XS', 'S', 'M', 'L', 'XL'];
     const colors = p.colors || [{ name: 'Primary Shade', hex: p.c1 || '#5B1835' }];
     let selectedSize = sizes[0] || 'M';
@@ -485,6 +585,7 @@
 
     $('#qv-wish').onclick = e => {
       const v = toggleWish(p.id);
+      if (v === null) return;
       e.target.textContent = v ? 'Saved to Wishlist' : 'Save to Wishlist';
       e.target.setAttribute('aria-pressed', v);
     };
@@ -570,9 +671,19 @@
     if (h) {
       e.preventDefault();
       const on = toggleWish(Number(h.dataset.wish));
+      if (on === null) return;
       h.classList.toggle('on', on);
       h.setAttribute('aria-pressed', on);
+      const svg = h.querySelector('svg');
+      if (svg) svg.setAttribute('fill', on ? 'currentColor' : 'none');
       if (document.body.dataset.page === 'wishlist') pages.wishlist();
+      else if (document.body.dataset.page === 'login') {
+        const activeTab = document.querySelector('.account-tab-btn.active')?.dataset?.tab;
+        if (activeTab === 'wishlist') {
+          const tabBtn = document.querySelector('.account-tab-btn[data-tab="wishlist"]');
+          if (tabBtn) tabBtn.click();
+        }
+      }
       else toast(on ? 'Saved to wishlist' : 'Removed from wishlist', on ? 'wishlist.html' : '', 'View Wishlist');
       return;
     }
@@ -807,7 +918,7 @@
       let size = sizes[0] || 'M';
       let color = colors[0]?.name || 'Selected Shade';
       let qty = 1;
-      const on = () => db.get('wish', []).includes(p.id);
+      const on = () => db.isWishlisted(p.id);
 
       root.innerHTML = `
         <div class="wrap pdp">
@@ -1083,20 +1194,54 @@
       // Wishlist toggle
       $('#wish').onclick = e => {
         const v = toggleWish(p.id);
+        if (v === null) return;
         e.target.textContent = v ? 'Saved to Wishlist' : 'Save to Wishlist';
         e.target.setAttribute('aria-pressed', v);
       };
     },
 
     /* ---------- Module 4: Wishlist ---------- */
-    wishlist() {
-      const items = db.get('wish', []).map(byId).filter(Boolean);
+    async wishlist() {
       const root = $('#wish-grid');
-      if (root) {
+      if (!root) return;
+
+      const user = db.user();
+      if (!db.token() || !user) {
+        root.innerHTML = `
+          <div class="empty" style="grid-column:1/-1;text-align:center;padding:5rem 1rem">
+            <span class="hero-pill" style="margin-bottom:1rem">Atelier Authentication Required</span>
+            <h2 style="margin:1rem 0 0.5rem">Your Curated Trousseau</h2>
+            <p class="muted" style="margin:0.5rem 0 2rem;max-width:500px;margin-inline:auto">
+              Please sign in to your patron account to view your private wishlist and saved haute couture creations.
+            </p>
+            <a class="btn gold" href="login.html">Sign In to Your Account</a>
+          </div>`;
+        return;
+      }
+
+      root.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:4rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
+
+      try {
+        const res = await fetchAuth('/api/user/wishlist');
+        let items = [];
+        if (res.ok) {
+          items = await res.json();
+          db.setWishlist(items.map(p => Number(p.id)));
+        } else {
+          items = db.getWishlist().map(byId).filter(Boolean);
+        }
+
         root.innerHTML = items.length ? items.map(card).join('') : `
           <div class="empty" style="grid-column:1/-1;text-align:center;padding:5rem 1rem">
             <h2>Your Wishlist is Empty</h2>
             <p class="muted" style="margin:1rem 0 2rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
+            <a class="btn gold" href="shop.html">Explore The Catalogue</a>
+          </div>`;
+      } catch (err) {
+        root.innerHTML = `
+          <div class="empty" style="grid-column:1/-1;text-align:center;padding:4rem 1rem">
+            <h2>Unable to load wishlist</h2>
+            <p class="muted" style="margin:1rem 0 2rem">Please refresh the page or verify your server connection.</p>
             <a class="btn gold" href="shop.html">Explore The Catalogue</a>
           </div>`;
       }
@@ -1587,22 +1732,35 @@
 
           /* --- TAB 3: Curated Wishlist --- */
           else if (tabName === 'wishlist') {
-            const items = db.get('wish', []).map(byId).filter(Boolean);
-            if (items.length) {
-              container.innerHTML = `
-                <div style="margin-bottom:1.5rem">
-                  <h2>Saved Trousseau Pieces (${items.length})</h2>
-                </div>
-                <div class="grid">${items.map(card).join('')}</div>
-              `;
-            } else {
-              container.innerHTML = `
-                <div class="empty" style="text-align:center;padding:4rem 1rem">
-                  <h3>Your Wishlist is Empty</h3>
-                  <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
-                  <a class="btn gold" href="shop.html">Explore The Catalogue</a>
-                </div>
-              `;
+            container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
+            try {
+              const res = await fetchAuth('/api/user/wishlist');
+              let items = [];
+              if (res.ok) {
+                items = await res.json();
+                db.setWishlist(items.map(p => Number(p.id)));
+              } else {
+                items = db.getWishlist().map(byId).filter(Boolean);
+              }
+
+              if (items.length) {
+                container.innerHTML = `
+                  <div style="margin-bottom:1.5rem">
+                    <h2>Saved Trousseau Pieces (${items.length})</h2>
+                  </div>
+                  <div class="grid">${items.map(card).join('')}</div>
+                `;
+              } else {
+                container.innerHTML = `
+                  <div class="empty" style="text-align:center;padding:4rem 1rem">
+                    <h3>Your Wishlist is Empty</h3>
+                    <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
+                    <a class="btn gold" href="shop.html">Explore The Catalogue</a>
+                  </div>
+                `;
+              }
+            } catch (err) {
+              container.innerHTML = '<div class="empty" style="text-align:center;padding:3rem 1rem"><p class="muted">Could not load your wishlist.</p></div>';
             }
           }
 
@@ -1823,6 +1981,7 @@
 
             db.setToken(data.token);
             db.set('user', data.user);
+            await syncUserWishlist();
             toast(`Welcome, ${data.user.name}!`);
             mountChrome();
             pages.login();
@@ -1891,10 +2050,19 @@
   const page = document.body.dataset.page;
   const needsData = ['home', 'collections', 'shop', 'product', 'wishlist', 'cart', 'checkout', 'login'].includes(page);
 
+  // Clean up legacy global ss_wish
+  localStorage.removeItem('ss_wish');
+
+  // If user is already logged in, sync their database wishlist on page load
+  const initWishlistPromise = (db.token() && db.user())
+    ? syncUserWishlist()
+    : Promise.resolve().then(() => db.clearGuestWishlist());
+
   (needsData
     ? fetch('/api/products').then(r => r.json()).then(d => { PRODUCTS = d; })
     : Promise.resolve()
   )
+    .then(() => initWishlistPromise)
     .then(() => pages[page]?.())
     .catch(() => {
       const m = $('main');
