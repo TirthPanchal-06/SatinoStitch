@@ -1,162 +1,68 @@
-# SATINOSTITCH — Haute Couture & Contemporary Pret
+**SATINOSTITCH** 
 
-> **Where timeless elegance meets modern fashion.**  
-> An online luxury fashion atelier bringing together royal Indian artisanal heritage (Banarasi silks, hand-embroidered lehengas, Chanderi kurtas) and modern tailoring.
+SATINOSTITCH is an online fashion shopping platform focused on providing a smooth, convenient, and enjoyable shopping experience. It offers customers a place to explore different clothing styles, discover the latest fashion trends, and shop for ethnic and western wear.
 
----
+The platform is designed to make the online shopping process simple, from discovering products to placing orders and managing purchases. It also supports the business in handling its daily activities and maintaining an organized shopping and order management process.
 
-## Overview
+With an elegant design and user-friendly experience, SATINOSTITCH aims to connect customers with fashion while making online shopping more accessible and convenient.
 
-**SATINOSTITCH** is a full-featured fashion e-commerce web application with a Node.js + Express backend and PostgreSQL database integration. Customers can explore curated seasonal edits, filter and sort collections, view detailed garment specifications with interactive zoom and verified reviews, select sizes with interactive fit guides, manage their shopping bag and trousseau wishlist across sessions, apply dynamic atelier promo coupons, and place orders through an integrated checkout flow with real-time inventory decrement and visual delivery tracking.
+## Project Objective
 
----
+The main objective of SATINOSTITCH is to establish a professional online presence for a fashion business, simplify clothing purchases, improve customer convenience, and support efficient business operations through a centralized digital platform.
 
-## Five Customer Modules
+## Project Vision
 
-### 1. Home Module (`index.html`)
-- **Hero & Promotional Banners**: Dynamic seasonal couture banners with marquee announcements, editorial tags, and direct CTA routing.
-- **Curated Collections Showcase**: Hand-curated capsules (*The Royal Banarasi Edit*, *Noor-e-Zari Wedding Trousseau*, *Aangan Festive Chanderi*, *The Sovereign Velvet Series*).
-- **Style & Occasion Concierge Matcher**: Interactive style finder matching patron preferences (Occasion: *Wedding, Festive, Evening Gala, Cocktail Soiree*, Mood: *Royal Opulence, Contemporary Minimalist, Heritage Classic*) with instant catalog filtering.
-- **Curated Featured Showcase**: Live catalog highlights with price, ratings, quick view, and direct bag insertion.
-- **VIP Newsletter Subscription**: Atelier dispatch signup with email validation and confirmation modal.
-
-### 2. Product Catalogue Module (`shop.html`)
-- **Dynamic PostgreSQL Catalog**: Real-time querying against relational PostgreSQL tables with debounced search.
-- **Multi-Facet Filtering**:
-  - Category filtering (`ethnic`, `western`)
-  - Silhouette / garment type filtering (`Suit sets`, `Kurtas`, `Sarees`, `Lehengas`, `Dresses`, `Tops & blazers`, `Bottoms`)
-  - Curated collection filtering (`wedding`, `festive`, `everyday`, `work`)
-  - Full-text keyword search across garment titles, fabrics, patterns, and descriptions
-  - Price ceiling slider (up to ₹15,000)
-  - In-stock availability toggle
-- **Dynamic Sorting**: Featured/newest, price (low-to-high), price (high-to-low), and customer rating.
-- **Interactive Quick View Modal**: Preview specs, fabrics, and size variants directly from catalog cards.
-- **Wishlist Toggle**: Real-time heart toggle synchronizing locally and with backend PostgreSQL wishlist table when authenticated.
-
-### 3. Product Details Page (PDP) (`product.html`)
-- **Interactive Zoom Lens & Gallery**: Hover zoom inspection for fabric weaves and gold zari embroidery, accompanied by clickable image thumbnail selector.
-- **Garment Specifications**: Detailed breakdowns of material composition, weave pattern, sleeve silhouette, care instructions, and artisan origin.
-- **Variant Selectors**:
-  - Size variants (`XS`, `S`, `M`, `L`, `XL`, `XXL`) with out-of-stock disable states.
-  - Interactive colour swatches reflecting available garment palette options.
-- **Inventory Stock Indicator**: Live inventory warnings ("Only 2 pieces remaining in atelier" / "Made to Order").
-- **Virtual Size Finder & Fit Guide**: Modal reference with standard bust, waist, and hip measurements across XS–XXL.
-- **Verified Customer Reviews**:
-  - Star ratings breakdown and average score calculation.
-  - Review listing with patron names, verified purchase badges, and review dates.
-  - Interactive review submission form with live star picker, verified feedback storage, and database persistence.
-- **Curated Ensemble (Related Items)**: Dynamic recommendations sharing collection or silhouette motifs.
-
-### 4. Cart & Checkout Module (`cart.html`, `checkout.html`)
-- **Persistent Shopping Bag**: Line items displaying selected size, color, quantity adjustments, and remove actions.
-- **Complimentary Shipping Progress Bar**: Dynamic progress tracking toward the ₹3,000 complimentary insured courier threshold.
-- **Dynamic Atelier Coupon Engine**:
-  - `HERITAGE10` — 10% off entire order.
-  - `ROYAL15` — 15% off orders exceeding ₹5,000.
-  - `ATELIER20` — 20% off orders exceeding ₹8,000.
-  - Live coupon validation against PostgreSQL database with real-time discount calculation.
-- **Checkout Address Management**:
-  - Seamless auto-fill from authenticated user's saved address book.
-  - New delivery address form with validation (recipient, address line, city, state, pin code, phone).
-  - Option to save address to patron address book during checkout.
-- **Payment Method Selection**:
-  - UPI / QR payment simulation.
-  - Credit & Debit Card checkout with cardholder formatting.
-  - Net Banking across premier Indian institutions.
-  - Cash on Delivery (COD) for eligible domestic pin codes.
-- **Order Placement & Stock Decrement**:
-  - Transactional order creation in PostgreSQL with unique tracking ID generation (`SS` + 7 digits).
-  - Automatic inventory stock decrement in the `products` table.
-  - Order confirmation view with direct order tracking link.
-
-### 5. Customer Account Portal (`login.html`)
-- **Secure Authentication**:
-  - Patron sign in & registration with email validation, bcrypt password hashing, and JWT authorization.
-  - Pre-seeded test accounts ready for instant testing.
-- **Patron Profile Management**:
-  - View and update full name, contact phone, and atelier preferences.
-- **Saved Delivery Addresses (CRUD)**:
-  - Add, view, set default, and delete multiple delivery addresses saved in PostgreSQL.
-- **Order History & Visual Tracking Stepper**:
-  - Comprehensive log of past and active orders with item summaries, price breakdown, and current status.
-  - 5-stage interactive tracking stepper: *Confirmed → Handcrafted at Atelier → Quality Inspected → Dispatched via Courier → Delivered*.
-- **Self-Service Order Management**:
-  - Cancel order functionality (restores inventory stock to the database automatically).
-  - Return request initiation for delivered couture orders.
-- **Atelier Management & Product CRUD (Admin)**:
-  - Exclusive portal tab for atelier curators.
-  - Create, update, and delete catalog garments with title, category, type, price, stock, and descriptions.
-  - Drag-and-drop / file upload dropzone using `multer` storing imagery in `frontend/uploads/`.
-- **Private Curated Wishlist**:
-  - Exclusively isolated per user account in PostgreSQL (`user_wishlists`).
-  - Only the user who saved a piece can view it in their personal trousseau wishlist.
+To create a reliable and scalable online fashion destination that brings together modern shopping experiences, quality fashion, and convenient business operations.
 
 ---
 
-## Project Structure
+## Backend Architecture & Key Modules
 
-```
-satinostitch/
-├── backend/
-│   ├── data/
-│   │   └── products.json         # Fallback data store & initial catalog
-│   ├── db/
-│   │   ├── init.js               # Database migration & seed orchestrator (all 9 tables)
-│   │   └── schema.sql            # PostgreSQL DDL for tables, constraints & indexes
-│   ├── middleware/
-│   │   └── auth.js               # JWT authentication & role-based middleware
-│   ├── db.js                     # Parameterized PostgreSQL connection pool & queries
-│   └── server.js                 # Express application, REST endpoints & static routes
-├── frontend/
-│   ├── css/
-│   │   └── style.css             # Royal Heritage design system & responsive styling
-│   ├── images/                   # Garment imagery, branding emblems & banners
-│   ├── js/
-│   │   └── app.js                # Core frontend client controller & UI modules
-│   ├── uploads/                  # Uploaded garment imagery storage
-│   ├── about.html                # Atelier heritage & artisan philosophy
-│   ├── cart.html                 # Shopping bag & subtotal calculation
-│   ├── checkout.html             # Delivery details & order placement
-│   ├── collections.html          # Seasonal edits & curated capsules
-│   ├── contact.html              # Atelier inquiries & concierge form
-│   ├── index.html                # Storefront homepage & hero showcases
-│   ├── login.html                # Client portal & account authentication / dashboard
-│   ├── product.html              # Individual product details page with zoom & reviews
-│   ├── shop.html                 # Full catalog with dynamic search & filters
-│   └── wishlist.html             # Personal saved trousseau items
-├── .env                          # Local environment variables (git-ignored)
-├── .env.example                  # Example environment variable template
-├── .gitignore                    # Git ignore configuration
-├── package.json                  # Project scripts & Express/pg/bcrypt/jsonwebtoken/multer
-└── README.md                     # Project documentation
-```
+SATINOSTITCH is powered by a high-performance **Node.js + Express.js + PostgreSQL** architecture with secure authentication, role-based access control (RBAC), and persistent transactional workflows.
+
+### 1. Products & Categories API
+- **Dynamic Catalog Querying**: Multi-facet filtering (`cat`, `col`, `type`, `max`, `min`, `inStock`), debounced full-text search, and multi-mode sorting.
+- **Role-Based Access Control**: Product and category creation, updates, and deletion are strictly protected and restricted to administrators (`requireAdmin`).
+- **Image Uploads**: Secure file upload handling using `multer` with strict MIME filtering (`image/jpeg`, `image/png`, `image/webp`) and 5MB size limit.
+
+### 2. Customer Authentication & Profile Security
+- **Strict Registration Policy**: Public registration is strictly restricted to `customer` accounts. Any attempt to escalate privileges to `admin` during public signup is blocked with an HTTP 403 Forbidden error.
+- **Password Protection**: Passwords securely hashed with `bcryptjs` (salt rounds: 10). Sensitive credential fields (`password_hash`) are automatically stripped from all API outputs.
+- **Token Authorization**: Stateless session authorization powered by `jsonwebtoken` (JWT) with bearer token extraction.
+- **Profile & Address Book**: Patron profile modifications, password changes with current password verification, and full address book CRUD.
+
+### 3. Isolated Customer Wishlist
+- **Account Isolation**: Wishlists are strictly associated with each authenticated patron ID in PostgreSQL (`user_wishlists`).
+- **No Cross-Contamination**: Each user sees exclusively their own curated trousseau pieces. Unauthenticated visitors are prompted to sign in before saving items.
+
+### 4. Persistent Customer Cart
+- **Database Persistence**: Server-side cart stored in PostgreSQL (`cart_items`) with unique constraints on `(user_id, product_id, size, color)`.
+- **Guest-to-User Sync**: Seamlessly syncs guest browser items to the authenticated account upon sign-in.
+- **Quantity Controls & Auto-Clearing**: Real-time quantity adjustments and automatic cart clearance upon successful order commissioning.
+
+### 5. Inventory & Stock Automation
+- **Real-Time Stock Decrement**: Atomically decrements garment inventory stock in PostgreSQL within an SQL transaction when orders are placed.
+- **Automated Restocking**: Automatically restores inventory count when customer orders are cancelled.
+- **Inventory Metrics**: Dedicated administrative metrics endpoint reporting catalog totals, low-stock warnings, and out-of-stock items.
+
+### 6. Coupons & Order Checkout
+- **Dynamic Coupon Engine**: Real-time promo code validation against PostgreSQL (`HERITAGE10`, `ROYAL15`, `ATELIER20`) with threshold enforcement.
+- **Transactional Checkout**: Validates contact details, recipient address, line item inventory, and calculates shipping fees.
+- **Visual Order Tracking**: 5-stage tracking lifecycle with auto-generated tracking numbers and direct cancellation/return handling.
 
 ---
 
-## Tech Stack
+## PostgreSQL Database Schema (10 Tables)
 
-- **Frontend**: HTML5, Modern CSS3 (CSS Variables, Flexbox, CSS Grid), Vanilla JavaScript (ES6+)
-- **Backend**: Node.js, Express.js
-- **Authentication**: JSON Web Tokens (`jsonwebtoken`), `bcryptjs`
-- **File Uploads**: `multer`
-- **Database**: PostgreSQL (`satinostitch`)
-- **Connection & Config**: `pg` (node-postgres connection pool), `dotenv`
-
----
-
-## Database Architecture (PostgreSQL)
-
-The database schema includes 10 relational tables with foreign keys and performance indexes:
-
-1. **`users`**: Patron and curator accounts (`id`, `name`, `email`, `password_hash`, `role`, `phone`, `created_at`, `updated_at`).
+1. **`users`**: Patron and administrator accounts (`id`, `name`, `email`, `password_hash`, `role`, `phone`, `created_at`, `updated_at`).
 2. **`user_addresses`**: Saved delivery addresses (`id`, `user_id`, `recipient_name`, `phone`, `address_line1`, `address_line2`, `city`, `state`, `pincode`, `is_default`, `created_at`).
 3. **`categories`**: Garment categories (`id`, `slug`, `name`, `description`).
-4. **`products`**: Garment catalog with JSONB variants (`id`, `name`, `category_id`, `cat`, `type`, `col`, `price`, `old_price`, `images`, `sizes`, `colors`, `stock`, `fabric`, `description`).
+4. **`products`**: Garment catalog (`id`, `name`, `category_id`, `cat`, `type`, `col`, `price`, `old_price`, `images`, `sizes`, `colors`, `stock`, `fabric`, `description`).
 5. **`product_reviews`**: Verified customer reviews (`id`, `product_id`, `user_id`, `user_name`, `rating`, `title`, `comment`, `verified_purchase`, `created_at`).
 6. **`coupons`**: Promotional discount codes (`id`, `code`, `discount_percent`, `min_order_amount`, `is_active`, `description`).
-7. **`orders`**: Customer orders with tracking (`id`, `user_id`, `customer_name`, `customer_email`, `customer_phone`, `shipping_address`, `subtotal`, `discount`, `coupon_code`, `shipping_fee`, `total`, `payment_method`, `payment_status`, `status`, `tracking_number`, `created_at`).
+7. **`orders`**: Customer orders (`id`, `user_id`, `customer_name`, `customer_email`, `customer_phone`, `shipping_address`, `subtotal`, `discount`, `coupon_code`, `shipping_fee`, `total`, `payment_method`, `payment_status`, `status`, `tracking_number`, `created_at`).
 8. **`order_items`**: Order line items (`id`, `order_id`, `product_id`, `product_name`, `size`, `color`, `price`, `quantity`, `total`).
-9. **`user_wishlists`**: Isolated per-user trousseau items (`id`, `user_id`, `product_id`, `created_at`).
+9. **`user_wishlists`**: User-isolated trousseau items (`id`, `user_id`, `product_id`, `created_at`).
 10. **`cart_items`**: Persistent customer shopping bag (`id`, `user_id`, `product_id`, `size`, `color`, `quantity`, `created_at`, `updated_at`).
 
 ---
@@ -165,9 +71,9 @@ The database schema includes 10 relational tables with foreign keys and performa
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (version 18 or higher recommended)
+- [Node.js](https://nodejs.org/) (v18+)
+- [PostgreSQL](https://www.postgresql.org/) (v14+)
 - [npm](https://www.npmjs.com/)
-- [PostgreSQL](https://www.postgresql.org/) (version 14 or higher)
 
 ### Setup & Run
 
@@ -183,11 +89,7 @@ The database schema includes 10 relational tables with foreign keys and performa
    ```
 
 3. **Configure Environment Variables**:
-   Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-   Configure your PostgreSQL credentials and JWT secret in `.env`:
+   Copy `.env.example` to `.env` and specify database credentials:
    ```env
    PORT=3000
    NODE_ENV=development
@@ -196,36 +98,20 @@ The database schema includes 10 relational tables with foreign keys and performa
    DB_PORT=5432
    DB_NAME=satinostitch
    DB_USER=postgres
-   DB_PASSWORD=your_postgres_password
+   DB_PASSWORD=your_password
 
    JWT_SECRET=satinostitch_luxury_atelier_secret_2026
    ```
 
-4. **Ensure PostgreSQL Database Exists**:
-   ```sql
-   CREATE DATABASE satinostitch;
-   ```
-
-5. **Initialize Database Tables & Seed (Automated on Start)**:
+4. **Initialize Database Tables & Seed**:
    ```bash
    npm run seed
    ```
-   *(Note: The server also auto-verifies tables and seeds initial data on startup if empty).*
 
-6. **Start the server**:
+5. **Start the application**:
    ```bash
    npm start
    ```
-   *For live development with auto-restart:*
-   ```bash
-   npm run dev
-   ```
-
-7. **Access the application**:
-   - Storefront & Home: `http://localhost:3000/index.html`
-   - Dynamic Shop: `http://localhost:3000/shop.html`
-   - Patron Account Portal: `http://localhost:3000/login.html`
-   - Health Check API: `http://localhost:3000/api/health`
 
 ---
 
@@ -233,33 +119,23 @@ The database schema includes 10 relational tables with foreign keys and performa
 
 | Role | Email | Password | Access / Scope |
 |---|---|---|---|
-| **Patron / Customer** | `meera@example.com` | `password123` | Order history, tracking stepper, address book, trousseau wishlist |
-| **Atelier Curator / Admin** | `admin@satinostitch.com` | `admin123` | Full customer access + Atelier product CRUD & image upload dropzone |
-
----
-
-## Promo Coupon Codes
-
-| Code | Discount | Conditions |
-|---|---|---|
-| `HERITAGE10` | 10% Off | Valid across entire catalog, no minimum order requirement |
-| `ROYAL15` | 15% Off | Valid on orders of ₹5,000 or more |
-| `ATELIER20` | 20% Off | Valid on luxury couture orders of ₹8,000 or more |
+| **Patron / Customer** | `meera@example.com` | `password123` | Order history, tracking, address book, private wishlist, cart |
+| **Atelier Admin** | `admin@satinostitch.com` | `admin123` | Full access + product CRUD, image uploads, inventory metrics, order status |
 
 ---
 
 ## Complete API Reference
 
-### Diagnostics & Content
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Uptime, database connection health, and table counts |
-| `GET` | `/api/banners` | Promotional editorial banners & CTA definitions |
-| `GET` | `/api/collections` | Curated seasonal capsules & heritage edits |
-| `POST` | `/api/newsletter` | VIP newsletter dispatch signup |
-| `POST` | `/api/contact` | Concierge & atelier inquiry submission |
+### System & Diagnostics
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/health` | Public | Server uptime, database connection status, and table counts |
+| `GET` | `/api/banners` | Public | Seasonal promotional banners and campaign copy |
+| `GET` | `/api/collections` | Public | Curated capsules and lookbook edits |
+| `POST` | `/api/newsletter` | Public | VIP newsletter dispatch signup |
+| `POST` | `/api/contact` | Public | Concierge & atelier inquiry submission |
 
-### Product Catalog, Inventory & Categories
+### Products, Categories & Inventory
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/categories` | Public | Categories with live product count aggregations |
@@ -278,7 +154,7 @@ The database schema includes 10 relational tables with foreign keys and performa
 | `GET` | `/api/products/:id/reviews` | Public | Fetch verified reviews for garment |
 | `POST` | `/api/products/:id/reviews` | Patron | Submit new customer review |
 
-### Persistent Cart, Coupons & Checkout
+### Cart, Coupons & Orders
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/cart` | Patron | Retrieve persistent server-side cart & line items |
@@ -299,7 +175,7 @@ The database schema includes 10 relational tables with foreign keys and performa
 | `POST` | `/api/orders/:id/cancel` | Public / Patron | Cancel order and automatically restock inventory |
 | `POST` | `/api/orders/:id/return` | Public / Patron | Submit customer return request for delivered orders |
 
-### Authentication, Profiles & Wishlist
+### Authentication, User & Wishlist
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | Public | Register customer account (**public admin registration disabled**) |
@@ -319,15 +195,4 @@ The database schema includes 10 relational tables with foreign keys and performa
 
 ---
 
-## Design System & Theme
-
-- **Imperial Wine**: `#5B1835` / `#3D0F23` (Royal heritage accents, headings, borders)
-- **Antique Gold**: `#C6A15B` / `#DFC187` (Couture badges, primary CTAs, active highlights)
-- **Ivory Cream**: `#FBF8F2` / `#F3EDE2` (Canvas backgrounds, cards, subtle textures)
-- **Espresso Obsidian**: `#1C1715` / `#2D2522` (High-contrast typography and footers)
-
----
-
-## License
-
-This project is licensed under the ISC License.
+**SATINOSTITCH — Where timeless elegance meets modern fashion.**
