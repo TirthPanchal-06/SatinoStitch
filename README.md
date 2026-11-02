@@ -87,6 +87,9 @@
   - Exclusive portal tab for atelier curators.
   - Create, update, and delete catalog garments with title, category, type, price, stock, and descriptions.
   - Drag-and-drop / file upload dropzone using `multer` storing imagery in `frontend/uploads/`.
+- **Private Curated Wishlist**:
+  - Exclusively isolated per user account in PostgreSQL (`user_wishlists`).
+  - Only the user who saved a piece can view it in their personal trousseau wishlist.
 
 ---
 
