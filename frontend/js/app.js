@@ -147,6 +147,9 @@
           </div>
           <div class="wrap copy-row">
             <span>© 2026 SATINOSTITCH LUXURY BOUTIQUE. All rights reserved.</span>
+            <a href="/api/health" target="_blank" id="system-health-badge" class="health-badge" title="Verifying server and database health...">
+              <span class="health-dot health-checking"></span> Connecting...
+            </a>
             <span>Handcrafted with precision · Banarasi Silk · Pure Mulberry · Fine Suiting</span>
           </div>
         </footer>`;
@@ -974,8 +977,40 @@
     }
   };
 
+  /* ---------- System & Database Health Check ---------- */
+  async function checkSystemHealth() {
+    const badge = $('#system-health-badge');
+    try {
+      const res = await fetch('/api/health');
+      const data = await res.json();
+      if (res.ok && data.status === 'ok') {
+        if (badge) {
+          badge.innerHTML = `<span class="health-dot health-ok"></span> Server &amp; DB: Online`;
+          badge.title = `Database: ${data.database?.name || 'satinostitch'} (PostgreSQL Connected)`;
+        }
+        console.log('[SATINOSTITCH] System & Database Health Verified:', data);
+      } else {
+        if (badge) {
+          badge.innerHTML = `<span class="health-dot health-warn"></span> DB Degraded`;
+          badge.title = data.database?.error || 'Database connection degraded';
+        }
+        console.warn('[SATINOSTITCH] System health degraded:', data);
+      }
+      return data;
+    } catch (err) {
+      if (badge) {
+        badge.innerHTML = `<span class="health-dot health-err"></span> Server Offline`;
+        badge.title = err.message || 'Cannot connect to server';
+      }
+      console.error('[SATINOSTITCH] Health check error:', err);
+    }
+  }
+
+  window.checkSystemHealth = checkSystemHealth;
+
   /* ---------- Initialization & Boot ---------- */
   mountChrome();
+  checkSystemHealth();
   const page = document.body.dataset.page;
   const needsData = ['home', 'collections', 'shop', 'product', 'wishlist', 'cart', 'checkout'].includes(page);
 

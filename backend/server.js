@@ -1,6 +1,8 @@
+require('dotenv').config();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +14,41 @@ const orders = [];
 // Middleware setup
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+// Health check endpoint: verifies server and PostgreSQL database connectivity
+app.get('/api/health', async (req, res) => {
+  const dbHealth = await db.testConnection();
+  const isHealthy = dbHealth.connected;
+
+  const response = {
+    status: isHealthy ? 'ok' : 'degraded',
+    message: isHealthy
+      ? 'SATINOSTITCH server and PostgreSQL database are healthy'
+      : 'SATINOSTITCH server is running, but database connection failed',
+    uptime: `${Math.floor(process.uptime())}s`,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    server: {
+      status: 'online',
+      port: Number(PORT)
+    },
+    database: isHealthy
+      ? {
+          status: 'connected',
+          name: dbHealth.database,
+          user: dbHealth.user,
+          serverTime: dbHealth.time,
+          version: dbHealth.version
+        }
+      : {
+          status: 'disconnected',
+          name: process.env.DB_NAME || 'satinostitch',
+          error: dbHealth.error
+        }
+  };
+
+  res.status(isHealthy ? 200 : 503).json(response);
+});
 
 // Product catalog endpoint: supports category and collection filtering
 app.get('/api/products', (req, res) => {
@@ -69,6 +106,14 @@ app.use('/api', (req, res) => {
 });
 
 // Start application server
-app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`SATINOSTITCH server running at http://localhost:${PORT}`);
+  const dbStatus = await db.testConnection();
+  if (dbStatus.connected) {
+    console.log(`[PostgreSQL] Connected successfully to database: "${dbStatus.database}" as user: "${dbStatus.user}"`);
+  } else {
+    console.warn(`[PostgreSQL] Connection warning: ${dbStatus.error}`);
+  }
 });
+
+module.exports = { app, server };

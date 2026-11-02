@@ -1654,6 +1654,48 @@ footer a:hover {
   gap: 1rem;
 }
 
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(244, 237, 224, 0.15);
+  color: var(--ivory-soft);
+  text-decoration: none;
+  transition: all 0.25s ease;
+}
+
+.health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.health-ok {
+  background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+}
+
+.health-warn {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.health-err {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.health-checking {
+  background: var(--gold-light);
+  opacity: 0.7;
+}
+
 /* ==========================================================================
    Toast Notification & Keyframes
    ========================================================================== */
