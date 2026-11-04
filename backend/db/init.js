@@ -288,6 +288,101 @@ async function initializeDatabase() {
       console.log(`[PostgreSQL] Seeded initial order ${orderId} for demo user.`);
     }
 
+    // 9. Seed Initial Customer Activities & Base Product Views if empty
+    const actCountRes = await db.query('SELECT COUNT(*)::int AS count FROM customer_activities;');
+    if (actCountRes.rows[0].count === 0) {
+      // Seed base views on products
+      await db.query(`
+        UPDATE products SET views_count = CASE 
+          WHEN id = 1 THEN 142
+          WHEN id = 2 THEN 98
+          WHEN id = 4 THEN 185
+          WHEN id = 6 THEN 210
+          WHEN id = 9 THEN 115
+          WHEN id = 15 THEN 168
+          ELSE (id * 11 + 25)
+        END WHERE views_count = 0;
+      `);
+
+      const initialActs = [
+        {
+          user_name: 'Ananya Roy',
+          activity_type: 'order_placed',
+          description: 'Order placed #SS1040920 by Ananya Roy — Total: ₹35,100',
+          created_at: '2026-11-02 15:31:27+05:30'
+        },
+        {
+          user_name: 'Ananya Roy',
+          activity_type: 'payment',
+          description: 'Payment verified for Order #SS1040920 via CARD (₹35,100)',
+          created_at: '2026-11-02 15:31:28+05:30'
+        },
+        {
+          user_name: 'Tirth Panchal',
+          activity_type: 'order_placed',
+          description: 'Order placed #SS0676553 by Tirth Panchal — Total: ₹3,111',
+          created_at: '2026-11-02 14:44:36+05:30'
+        },
+        {
+          user_name: 'Meera Kapoor',
+          activity_type: 'order_placed',
+          description: 'Commission Order #SS8068472 placed by Meera Kapoor — Total: ₹5,841',
+          created_at: '2026-11-02 14:01:08+05:30'
+        },
+        {
+          user_name: 'Meera Kapoor',
+          activity_type: 'payment',
+          description: 'Payment confirmed for Order #SS8068472 via CARD (₹5,841)',
+          created_at: '2026-11-02 14:01:09+05:30'
+        },
+        {
+          user_name: 'Meera Kapoor',
+          activity_type: 'cancellation',
+          description: 'Order #SS8595660 cancelled: Found alternative color in atelier. Inventory restocked.',
+          created_at: '2026-11-02 14:09:56+05:30'
+        },
+        {
+          user_name: 'Ananya Deshmukh',
+          activity_type: 'review',
+          description: 'Verified 5★ review submitted for "Zari Anarkali Set" by Ananya Deshmukh',
+          created_at: '2026-11-02 13:30:00+05:30'
+        },
+        {
+          user_name: 'Radhika Sharma',
+          activity_type: 'review',
+          description: 'Verified 5★ review submitted for "Banarasi Silk Saree" by Radhika Sharma',
+          created_at: '2026-11-02 13:45:00+05:30'
+        },
+        {
+          user_name: 'Meera Kapoor',
+          activity_type: 'registration',
+          description: 'New patron account registered: Meera Kapoor (meera@example.com)',
+          created_at: '2026-11-02 12:00:00+05:30'
+        },
+        {
+          user_name: 'VIP Patron',
+          activity_type: 'product_view',
+          description: 'Patron viewed "Embroidered Lehenga"',
+          created_at: '2026-11-02 14:20:00+05:30'
+        },
+        {
+          user_name: 'VIP Patron',
+          activity_type: 'cart_add',
+          description: 'Added "Banarasi Silk Saree" (Size: S, Qty: 1) to shopping bag',
+          created_at: '2026-11-02 14:35:00+05:30'
+        }
+      ];
+
+      for (const act of initialActs) {
+        await db.query(
+          `INSERT INTO customer_activities (user_name, activity_type, description, created_at)
+           VALUES ($1, $2, $3, $4);`,
+          [act.user_name, act.activity_type, act.description, act.created_at]
+        );
+      }
+      console.log('[PostgreSQL] Initial customer activity audit logs seeded.');
+    }
+
     return true;
   } catch (err) {
     console.error('[PostgreSQL] Database initialization error:', err.message);

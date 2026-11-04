@@ -98,18 +98,18 @@ app.get('/api/health', async (req, res) => {
     server: { status: 'online', port: Number(PORT) },
     database: isHealthy
       ? {
-          status: 'connected',
-          name: dbHealth.database,
-          user: dbHealth.user,
-          serverTime: dbHealth.time,
-          version: dbHealth.version,
-          ...counts
-        }
+        status: 'connected',
+        name: dbHealth.database,
+        user: dbHealth.user,
+        serverTime: dbHealth.time,
+        version: dbHealth.version,
+        ...counts
+      }
       : {
-          status: 'disconnected',
-          name: process.env.DB_NAME || 'satinostitch',
-          error: dbHealth.error
-        }
+        status: 'disconnected',
+        name: process.env.DB_NAME || 'satinostitch',
+        error: dbHealth.error
+      }
   });
 });
 
@@ -282,13 +282,17 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-app.get('/api/products/:id', async (req, res) => {
+app.get('/api/products/:id', optionalAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
 
   try {
     const product = await db.getProductById(id);
-    if (product) return res.json(product);
+    if (product) {
+      // Record view in real-time
+      db.recordProductView(id, req.user ? req.user.id : null, req.ip).catch(() => { });
+      return res.json(product);
+    }
   } catch (err) {
     const fallback = loadFallbackProducts().find(p => p.id === id);
     if (fallback) return res.json(fallback);
@@ -378,6 +382,75 @@ app.post('/api/upload', authenticateToken, upload.single('image'), (req, res) =>
 /* ==========================================================================
    Inventory Management (Admin)
    ========================================================================== */
+
+/* ==========================================================================
+   Real-Time Analytics & Customer Activity Intelligence (Admin)
+   ========================================================================== */
+app.get('/api/admin/analytics', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const analytics = await db.getAdminAnalytics();
+    res.json(analytics);
+  } catch (err) {
+    console.error('[API] Admin analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/activities', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const limit = req.query.limit || 30;
+    const type = req.query.type || null;
+    const activities = await db.getCustomerActivities(limit, type);
+    res.json(activities);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/products/:id/view', optionalAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
+  try {
+    const userId = req.user ? req.user.id : null;
+    const ip = req.ip || req.connection?.remoteAddress;
+    await db.recordProductView(id, userId, ip);
+
+    const product = await db.getProductById(id);
+    if (product) {
+      db.logCustomerActivity({
+        userId,
+        userName: req.user ? req.user.name : 'Guest Patron',
+        activityType: 'product_view',
+        description: `Patron viewed garment: "${product.name}" (${product.cat === 'ethnic' ? 'Ethnic' : 'Western'})`,
+        metadata: { productId: id, name: product.name }
+      }).catch(() => { });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/activity/cart', optionalAuth, async (req, res) => {
+  const { productId, size, color, quantity } = req.body || {};
+  if (!productId) return res.status(400).json({ error: 'Product ID required' });
+  try {
+    const product = await db.getProductById(Number(productId));
+    const userId = req.user ? req.user.id : null;
+    const userName = req.user ? req.user.name : 'Guest Patron';
+    db.logCustomerActivity({
+      userId,
+      userName,
+      activityType: 'cart_add',
+      description: `Added "${product ? product.name : 'Garment'}" (Size: ${size || 'M'}, Qty: ${quantity || 1}) to shopping bag`,
+      metadata: { productId: Number(productId), size, color, quantity }
+    }).catch(() => { });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/inventory', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const data = await db.getInventorySummary();
@@ -445,6 +518,16 @@ app.post('/api/products/:id/reviews', optionalAuth, async (req, res) => {
       verifiedPurchase: !!req.user
     });
 
+    db.getProductById(id).then(p => {
+      db.logCustomerActivity({
+        userId,
+        userName: authorName,
+        activityType: 'review',
+        description: `Verified ${numRating}★ review submitted for "${p ? p.name : 'Creation'}" by ${authorName}: "${title || 'Patron Review'}"`,
+        metadata: { productId: id, rating: numRating, title }
+      }).catch(() => { });
+    }).catch(() => { });
+
     res.status(201).json(review);
   } catch (err) {
     console.error('[API] Create review error:', err);
@@ -484,6 +567,17 @@ app.post('/api/cart', authenticateToken, async (req, res) => {
       color: color || null,
       quantity: Number(quantity) || 1
     });
+
+    db.getProductById(Number(productId)).then(prod => {
+      db.logCustomerActivity({
+        userId: req.user.id,
+        userName: req.user.name,
+        activityType: 'cart_add',
+        description: `Added "${prod ? prod.name : 'Garment'}" (Size: ${size || 'M'}, Qty: ${quantity || 1}) to shopping bag`,
+        metadata: { productId: Number(productId), size, color, quantity }
+      }).catch(() => { });
+    }).catch(() => { });
+
     res.status(201).json({ ok: true, item });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -725,8 +819,25 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
 
     // 7. If user is authenticated, automatically clear their server-side cart
     if (userId) {
-      await db.clearUserCart(userId).catch(() => {});
+      await db.clearUserCart(userId).catch(() => { });
     }
+
+    // Log order placed and payment activities
+    db.logCustomerActivity({
+      userId,
+      userName: customer.name,
+      activityType: 'order_placed',
+      description: `New commission Order #${order.id} placed by ${customer.name} (Total: ₹${grandTotal.toLocaleString('en-IN')})`,
+      metadata: { orderId: order.id, total: grandTotal, paymentMethod }
+    }).catch(() => { });
+
+    db.logCustomerActivity({
+      userId,
+      userName: customer.name,
+      activityType: 'payment',
+      description: `Payment verified for Order #${order.id} via ${(paymentMethod || 'cod').toUpperCase()} (Status: ${(paymentMethod === 'cod') ? 'pending' : 'paid'})`,
+      metadata: { orderId: order.id, paymentMethod, paymentStatus: (paymentMethod === 'cod') ? 'pending' : 'paid', total: grandTotal }
+    }).catch(() => { });
 
     res.status(201).json({
       ok: true,
@@ -767,12 +878,63 @@ app.get('/api/admin/orders', authenticateToken, requireAdmin, async (req, res) =
 
 // Admin Update Order Status
 app.put('/api/orders/:id/status', authenticateToken, requireAdmin, async (req, res) => {
-  const { status } = req.body || {};
+  const { status, trackingNumber } = req.body || {};
   if (!status) return res.status(400).json({ error: 'New status is required.' });
 
   try {
-    const updated = await db.updateOrderStatus(req.params.id, status);
+    const prevOrder = await db.getOrderById(req.params.id);
+    if (!prevOrder) return res.status(404).json({ error: 'Order not found.' });
+
+    const updated = await db.updateOrderStatus(req.params.id, status, { trackingNumber });
     if (!updated) return res.status(404).json({ error: 'Order not found.' });
+
+    // Stock synchronization: If transitioning to Cancelled from non-cancelled, restore stock
+    if (status === 'Cancelled' && prevOrder.status !== 'Cancelled') {
+      if (prevOrder.items && prevOrder.items.length) {
+        for (const item of prevOrder.items) {
+          if (item.product_id) {
+            await db.updateProductStock(item.product_id, item.quantity);
+          }
+        }
+      }
+    }
+
+    // Payment sync: If delivering COD order, mark payment as paid
+    if (status === 'Delivered' && (prevOrder.payment_status === 'pending' || !prevOrder.payment_status)) {
+      await db.updateOrderPaymentStatus(req.params.id, 'paid');
+    }
+
+    db.logCustomerActivity({
+      userId: req.user.id,
+      userName: 'Atelier Master',
+      activityType: status === 'Cancelled' ? 'cancellation' : 'order_status_update',
+      description: `Order #${req.params.id} fulfillment status changed from "${prevOrder.status}" to "${status}"`,
+      metadata: { orderId: req.params.id, previousStatus: prevOrder.status, newStatus: status }
+    }).catch(() => { });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Update Order Payment Status
+app.put('/api/orders/:id/payment', authenticateToken, requireAdmin, async (req, res) => {
+  const { paymentStatus } = req.body || {};
+  if (!paymentStatus) return res.status(400).json({ error: 'Payment status is required.' });
+
+  try {
+    const updated = await db.updateOrderPaymentStatus(req.params.id, paymentStatus);
+    if (!updated) return res.status(404).json({ error: 'Order not found.' });
+
+    db.logCustomerActivity({
+      userId: req.user.id,
+      userName: 'Atelier Master',
+      activityType: 'payment_status_update',
+      description: `Payment status for Order #${req.params.id} updated to "${paymentStatus}"`,
+      metadata: { orderId: req.params.id, paymentStatus }
+    }).catch(() => { });
+
     res.json({ ok: true, order: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -797,6 +959,14 @@ app.post('/api/orders/:id/cancel', optionalAuth, async (req, res) => {
     const updated = await db.updateOrderStatus(orderId, 'Cancelled', {
       cancelReason: reason || 'Cancelled by patron request'
     });
+
+    db.logCustomerActivity({
+      userId: req.user ? req.user.id : null,
+      userName: req.user ? req.user.name : order.customer_name,
+      activityType: 'cancellation',
+      description: `Order #${orderId} cancelled: ${reason || 'Patron request'}. Stock restored to catalog.`,
+      metadata: { orderId, reason }
+    }).catch(() => { });
 
     // Restock items in PostgreSQL
     if (order.items && order.items.length) {
@@ -831,6 +1001,14 @@ app.post('/api/orders/:id/return', optionalAuth, async (req, res) => {
     const updated = await db.updateOrderStatus(orderId, 'Return Requested', {
       returnReason: reason || 'Return initiated by patron'
     });
+
+    db.logCustomerActivity({
+      userId: req.user ? req.user.id : null,
+      userName: req.user ? req.user.name : order.customer_name,
+      activityType: 'return',
+      description: `Return requested for Order #${orderId}: ${reason || 'Exchange requested'}. Courier pickup scheduled.`,
+      metadata: { orderId, reason }
+    }).catch(() => { });
 
     res.json({ ok: true, order: updated });
   } catch (err) {

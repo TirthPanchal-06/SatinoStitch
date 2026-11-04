@@ -155,6 +155,28 @@ CREATE TABLE IF NOT EXISTS cart_items (
   UNIQUE (user_id, product_id, size, color)
 );
 
+-- 11. Customer Activities & Audit Feed
+CREATE TABLE IF NOT EXISTS customer_activities (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_name VARCHAR(255),
+  activity_type VARCHAR(50) NOT NULL,
+  description TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 12. Product Views & Demand Tracking
+ALTER TABLE products ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS product_views (
+  id SERIAL PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  ip_address VARCHAR(100),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_products_cat ON products(cat);
 CREATE INDEX IF NOT EXISTS idx_products_col ON products(col);
@@ -165,3 +187,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON product_reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_addresses_user_id ON user_addresses(user_id);
 CREATE INDEX IF NOT EXISTS idx_cart_items_user_id ON cart_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_customer_activities_created_at ON customer_activities(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_customer_activities_type ON customer_activities(activity_type);
+CREATE INDEX IF NOT EXISTS idx_product_views_product_id ON product_views(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_views_created_at ON product_views(created_at DESC);
+

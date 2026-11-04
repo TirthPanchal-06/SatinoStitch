@@ -636,6 +636,17 @@ async function updateOrderStatus(orderId, status, { cancelReason, returnReason, 
   return res.rows[0] || null;
 }
 
+async function updateOrderPaymentStatus(orderId, paymentStatus) {
+  const sql = `
+    UPDATE orders
+    SET payment_status = $2, updated_at = NOW()
+    WHERE id = $1
+    RETURNING *;
+  `;
+  const res = await pool.query(sql, [orderId, paymentStatus]);
+  return res.rows[0] || null;
+}
+
 /* ==========================================================================
    User Wishlist Queries
    ========================================================================== */
@@ -934,6 +945,308 @@ async function updateUserPassword(userId, newPasswordHash) {
   return true;
 }
 
+/* ==========================================================================
+   Customer Activity Logging & Audit Feed
+   ========================================================================== */
+async function logCustomerActivity({ userId = null, userName = null, activityType, description, metadata = {} }) {
+  try {
+    const sql = `
+      INSERT INTO customer_activities (user_id, user_name, activity_type, description, metadata, created_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING id, user_id, user_name, activity_type, description, metadata, created_at;
+    `;
+    const res = await pool.query(sql, [
+      userId ? Number(userId) : null,
+      userName || (userId ? 'VIP Patron' : 'Guest Patron'),
+      activityType,
+      description,
+      JSON.stringify(metadata)
+    ]);
+    return res.rows[0];
+  } catch (err) {
+    console.warn('[Activity Log Warning]', err.message);
+    return null;
+  }
+}
+
+async function getCustomerActivities(limit = 30, activityType = null) {
+  let sql = `
+    SELECT ca.id, ca.user_id, ca.user_name, ca.activity_type, ca.description, ca.metadata, ca.created_at,
+           u.email AS user_email
+    FROM customer_activities ca
+    LEFT JOIN users u ON ca.user_id = u.id
+  `;
+  const params = [];
+  if (activityType && activityType !== 'all') {
+    params.push(activityType);
+    sql += ` WHERE ca.activity_type = $${params.length} `;
+  }
+  const cleanLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 30));
+  params.push(cleanLimit);
+  sql += ` ORDER BY ca.created_at DESC LIMIT $${params.length};`;
+  const res = await pool.query(sql, params);
+  return res.rows;
+}
+
+/* ==========================================================================
+   Product Views & Demand Tracking
+   ========================================================================== */
+async function recordProductView(productId, userId = null, ipAddress = null) {
+  const pId = Number(productId);
+  if (isNaN(pId)) return false;
+  try {
+    // Atomically increment views_count on the product
+    await pool.query('UPDATE products SET views_count = COALESCE(views_count, 0) + 1 WHERE id = $1;', [pId]);
+    // Record view timestamp log
+    await pool.query(
+      'INSERT INTO product_views (product_id, user_id, ip_address, created_at) VALUES ($1, $2, $3, NOW());',
+      [pId, userId ? Number(userId) : null, ipAddress || null]
+    );
+    return true;
+  } catch (err) {
+    console.warn('[Product View Warning]', err.message);
+    return false;
+  }
+}
+
+/* ==========================================================================
+   Live Admin Analytics & Real-Time Business Intelligence
+   ========================================================================== */
+async function getAdminAnalytics() {
+  // 1. Revenue & Order KPIs (Excluding Cancelled orders from net/gross calculations)
+  const revRes = await pool.query(`
+    SELECT 
+      COALESCE(SUM(total), 0)::numeric AS gross_revenue,
+      COALESCE(SUM(subtotal - discount), 0)::numeric AS net_revenue,
+      COUNT(*)::int AS valid_orders_count,
+      COALESCE(AVG(total), 0)::numeric AS average_order_value
+    FROM orders
+    WHERE status != 'Cancelled';
+  `);
+  const rev = revRes.rows[0];
+
+  // 2. Orders Status Distribution
+  const statusRes = await pool.query(`
+    SELECT status, COUNT(*)::int AS count
+    FROM orders
+    GROUP BY status;
+  `);
+  const statusCounts = {
+    'Confirmed': 0,
+    'In Atelier': 0,
+    'Dispatched': 0,
+    'Delivered': 0,
+    'Cancelled': 0,
+    'Return Requested': 0
+  };
+  let totalOrdersAll = 0;
+  statusRes.rows.forEach(r => {
+    totalOrdersAll += r.count;
+    if (statusCounts[r.status] !== undefined) statusCounts[r.status] = r.count;
+    else statusCounts[r.status] = r.count;
+  });
+
+  // 3. User & Patron Metrics
+  const usersRes = await pool.query(`
+    SELECT 
+      COUNT(*)::int AS total_users,
+      COUNT(*) FILTER (WHERE role = 'customer')::int AS total_customers,
+      COUNT(*) FILTER (WHERE role = 'admin')::int AS total_admins
+    FROM users;
+  `);
+  const userStats = usersRes.rows[0];
+
+  // 4. Inventory Metrics
+  const invRes = await pool.query(`
+    SELECT 
+      COUNT(*)::int AS total_products,
+      COALESCE(SUM(stock), 0)::int AS total_stock,
+      COUNT(*) FILTER (WHERE stock <= 5)::int AS low_stock_count,
+      COUNT(*) FILTER (WHERE stock = 0)::int AS out_of_stock_count,
+      COALESCE(SUM(views_count), 0)::int AS total_views
+    FROM products;
+  `);
+  const invStats = invRes.rows[0];
+
+  // 5. Daily Sales Graph Data (grouped by date)
+  const dailyRes = await pool.query(`
+    SELECT 
+      TO_CHAR(created_at, 'YYYY-MM-DD') AS key,
+      TO_CHAR(created_at, 'Mon DD') AS label,
+      COUNT(*)::int AS orders,
+      COALESCE(SUM(total), 0)::numeric AS revenue
+    FROM orders
+    WHERE status != 'Cancelled'
+    GROUP BY TO_CHAR(created_at, 'YYYY-MM-DD'), TO_CHAR(created_at, 'Mon DD')
+    ORDER BY key ASC;
+  `);
+
+  // 6. Weekly Sales Graph Data
+  const weeklyRes = await pool.query(`
+    SELECT 
+      TO_CHAR(DATE_TRUNC('week', created_at), 'YYYY-MM-DD') AS key,
+      'Wk of ' || TO_CHAR(DATE_TRUNC('week', created_at), 'Mon DD') AS label,
+      COUNT(*)::int AS orders,
+      COALESCE(SUM(total), 0)::numeric AS revenue
+    FROM orders
+    WHERE status != 'Cancelled'
+    GROUP BY DATE_TRUNC('week', created_at)
+    ORDER BY key ASC;
+  `);
+
+  // 7. Monthly Sales Graph Data
+  const monthlyRes = await pool.query(`
+    SELECT 
+      TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS key,
+      TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') AS label,
+      COUNT(*)::int AS orders,
+      COALESCE(SUM(total), 0)::numeric AS revenue
+    FROM orders
+    WHERE status != 'Cancelled'
+    GROUP BY DATE_TRUNC('month', created_at)
+    ORDER BY key ASC;
+  `);
+
+  // 8. Best-Selling Products (Ranked by actual units sold and revenue from non-cancelled orders)
+  const bsRes = await pool.query(`
+    SELECT 
+      oi.product_id,
+      oi.product_name,
+      oi.image,
+      COALESCE(p.cat, 'ethnic') AS cat,
+      COALESCE(p.type, 'Couture') AS type,
+      COALESCE(p.price, MAX(oi.price))::numeric AS price,
+      COALESCE(p.stock, 0)::int AS stock,
+      COALESCE(p.views_count, 0)::int AS views_count,
+      SUM(oi.quantity)::int AS total_sold,
+      SUM(oi.total)::numeric AS total_revenue
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.id
+    LEFT JOIN products p ON oi.product_id = p.id
+    WHERE o.status != 'Cancelled'
+    GROUP BY oi.product_id, oi.product_name, oi.image, p.cat, p.type, p.price, p.stock, p.views_count
+    ORDER BY total_sold DESC, total_revenue DESC
+    LIMIT 6;
+  `);
+
+  // 9. Most-Viewed Products & Product Demand
+  const mvRes = await pool.query(`
+    SELECT 
+      p.id, p.name, p.cat, p.type, p.price::numeric, p.stock, p.image,
+      COALESCE(p.views_count, 0)::int AS views_count,
+      p.rating, p.reviews
+    FROM products p
+    ORDER BY p.views_count DESC, p.id ASC
+    LIMIT 6;
+  `);
+
+  // 10. Low-Stock Alerts
+  const lowRes = await pool.query(`
+    SELECT id, name, cat, type, price::numeric, stock, image
+    FROM products
+    WHERE stock <= 5
+    ORDER BY stock ASC, id ASC;
+  `);
+
+  // 11. Recent Orders with details & payment
+  const recentOrdersRes = await pool.query(`
+    SELECT o.*, COUNT(oi.id)::int AS item_count
+    FROM orders o
+    LEFT JOIN order_items oi ON o.id = oi.order_id
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+    LIMIT 10;
+  `);
+
+  // 12. Recent Customer Activities
+  const actRes = await pool.query(`
+    SELECT ca.id, ca.user_id, ca.user_name, ca.activity_type, ca.description, ca.metadata, ca.created_at,
+           u.email AS user_email
+    FROM customer_activities ca
+    LEFT JOIN users u ON ca.user_id = u.id
+    ORDER BY ca.created_at DESC
+    LIMIT 25;
+  `);
+
+  // 13. Demand & Stock Breakdown by Category
+  const catRes = await pool.query(`
+    SELECT 
+      cat,
+      COUNT(*)::int AS product_count,
+      COALESCE(SUM(stock), 0)::int AS total_stock,
+      COALESCE(SUM(views_count), 0)::int AS total_views
+    FROM products
+    GROUP BY cat;
+  `);
+
+  const kpisObj = {
+    grossRevenue: Number(rev.gross_revenue) || 0,
+    netRevenue: Number(rev.net_revenue) || 0,
+    validOrdersCount: Number(rev.valid_orders_count) || 0,
+    totalOrdersAll,
+    averageOrderValue: Math.round(Number(rev.average_order_value) || 0),
+    totalCustomers: userStats.total_customers,
+    totalProducts: invStats.total_products,
+    totalStock: invStats.total_stock,
+    lowStockCount: invStats.low_stock_count,
+    outOfStockCount: invStats.out_of_stock_count,
+    totalViews: invStats.total_views,
+    statusCounts
+  };
+
+  return {
+    summary: kpisObj,
+    kpis: kpisObj,
+    salesGraphs: {
+      daily: dailyRes.rows.map(r => ({ key: r.key, label: r.label, orders: r.orders, revenue: Number(r.revenue) })),
+      weekly: weeklyRes.rows.map(r => ({ key: r.key, label: r.label, orders: r.orders, revenue: Number(r.revenue) })),
+      monthly: monthlyRes.rows.map(r => ({ key: r.key, label: r.label, orders: r.orders, revenue: Number(r.revenue) }))
+    },
+    bestSellers: bsRes.rows.map(r => ({
+      productId: r.product_id,
+      product_id: r.product_id,
+      name: r.product_name,
+      product_name: r.product_name,
+      image: r.image || 'images/p1.jpg',
+      cat: r.cat,
+      type: r.type,
+      price: Number(r.price),
+      stock: r.stock,
+      viewsCount: r.views_count,
+      views_count: r.views_count,
+      totalSold: r.total_sold,
+      total_sold: r.total_sold,
+      totalRevenue: Number(r.total_revenue),
+      total_revenue: Number(r.total_revenue)
+    })),
+    mostViewed: mvRes.rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      cat: r.cat,
+      type: r.type,
+      price: Number(r.price),
+      stock: r.stock,
+      image: r.image || 'images/p1.jpg',
+      viewsCount: r.views_count,
+      views_count: r.views_count,
+      rating: Number(r.rating) || 5.0,
+      reviews: r.reviews || 0
+    })),
+    lowStockAlerts: lowRes.rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      cat: r.cat,
+      type: r.type,
+      price: Number(r.price),
+      stock: r.stock,
+      image: r.image || 'images/p1.jpg'
+    })),
+    recentOrders: recentOrdersRes.rows,
+    recentActivities: actRes.rows,
+    demandByCategory: catRes.rows
+  };
+}
+
 module.exports = {
   pool,
   query,
@@ -982,6 +1295,7 @@ module.exports = {
   getUserOrders,
   getAllOrders,
   updateOrderStatus,
+  updateOrderPaymentStatus,
   // Wishlist
   getUserWishlist,
   addToWishlist,
@@ -992,5 +1306,10 @@ module.exports = {
   updateCartItemQuantity,
   removeCartItem,
   clearUserCart,
-  syncUserCart
+  syncUserCart,
+  // Activities, Views & Analytics
+  logCustomerActivity,
+  getCustomerActivities,
+  recordProductView,
+  getAdminAnalytics
 };

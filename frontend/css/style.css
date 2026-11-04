@@ -2215,3 +2215,865 @@ footer a:hover {
   display: block;
   box-shadow: var(--shadow-sm);
 }
+
+
+/* ==========================================================================
+   SATINOSTITCH Admin Dashboard — Stone & Forest Green Theme
+   Main Background: Stone (#F3F2EC)
+   Secondary Surfaces: Sage Grey (#D8D9D0)
+   Selected Navigation & Primary Actions: Forest Green (#30483B)
+   Text & High Contrast: Charcoal (#373B38)
+   ========================================================================== */
+
+:root {
+  --admin-stone: #F3F2EC;
+  --admin-sage: #D8D9D0;
+  --admin-sage-light: #EBECE5;
+  --admin-sage-dark: #C4C5BC;
+  --admin-forest: #30483B;
+  --admin-forest-dark: #22352A;
+  --admin-forest-light: #425F4F;
+  --admin-forest-glow: rgba(48, 72, 59, 0.16);
+  --admin-charcoal: #373B38;
+  --admin-charcoal-muted: #5D635E;
+  --admin-charcoal-subtle: #7A807B;
+  --admin-border: #C8C9BF;
+  --admin-border-subtle: rgba(55, 59, 56, 0.15);
+}
+
+/* Admin Page Surface */
+body.admin-dashboard-theme {
+  background-color: var(--admin-stone) !important;
+  color: var(--admin-charcoal) !important;
+}
+
+body.admin-dashboard-theme main {
+  background-color: var(--admin-stone) !important;
+}
+
+/* Remove Storefront Shopping Navbar from Admin Dashboard */
+body.admin-dashboard-theme #site-header,
+body.admin-dashboard-theme .announcement-bar,
+body.admin-dashboard-theme header.top,
+body[data-page="admin"] #site-header,
+body[data-page="admin"] .announcement-bar,
+body[data-page="admin"] header.top {
+  display: none !important;
+}
+
+.account-wrapper.admin-dashboard {
+  max-width: 1240px;
+  margin: 2.5rem auto 4.5rem;
+  padding: 0 1.5rem;
+  color: var(--admin-charcoal);
+}
+
+/* Header */
+.account-wrapper.admin-dashboard .account-header {
+  border-bottom: 1px solid var(--admin-border);
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+}
+
+.account-wrapper.admin-dashboard .account-header h1 {
+  font-family: var(--serif);
+  color: var(--admin-charcoal);
+  font-size: 2.2rem;
+  margin: 0.2rem 0;
+}
+
+.account-wrapper.admin-dashboard .admin-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.32rem 0.85rem;
+  background-color: var(--admin-forest);
+  color: #FFFFFF;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+
+.account-wrapper.admin-dashboard .admin-subtext {
+  color: var(--admin-charcoal-muted);
+  font-size: 0.92rem;
+}
+
+/* Navigation Tabs */
+.account-wrapper.admin-dashboard .account-nav {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--admin-border);
+  margin-bottom: 2.2rem;
+  padding-bottom: 0.6rem;
+}
+
+.account-wrapper.admin-dashboard .account-tab-btn {
+  padding: 0.75rem 1.35rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font: 600 0.92rem var(--sans);
+  color: var(--admin-charcoal);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.account-wrapper.admin-dashboard .account-tab-btn:hover {
+  background-color: var(--admin-sage);
+  color: var(--admin-charcoal);
+}
+
+/* Selected navigation item: Forest Green with crisp light text */
+.account-wrapper.admin-dashboard .account-tab-btn.active {
+  background-color: var(--admin-forest) !important;
+  color: #FFFFFF !important;
+  border-color: var(--admin-forest) !important;
+  box-shadow: 0 2px 8px var(--admin-forest-glow);
+}
+
+/* Secondary Surfaces: Sage Grey Cards */
+.account-wrapper.admin-dashboard .account-card,
+.account-wrapper.admin-dashboard .admin-surface-card {
+  background-color: var(--admin-sage);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  box-shadow: 0 4px 16px rgba(55, 59, 56, 0.05);
+  margin-bottom: 2rem;
+  color: var(--admin-charcoal);
+}
+
+.account-wrapper.admin-dashboard .account-card h2,
+.account-wrapper.admin-dashboard .account-card h3 {
+  font-family: var(--serif);
+  color: var(--admin-charcoal);
+  margin-bottom: 0.6rem;
+}
+
+.account-wrapper.admin-dashboard .muted,
+.account-wrapper.admin-dashboard p.muted {
+  color: var(--admin-charcoal-muted) !important;
+}
+
+/* Stat & Metric Tiles */
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.2rem;
+  margin-bottom: 1.8rem;
+}
+
+.admin-stat-tile {
+  background-color: var(--admin-stone);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-sm);
+  padding: 1.4rem 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.admin-stat-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(55, 59, 56, 0.08);
+}
+
+.admin-stat-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--admin-charcoal-muted);
+  margin-bottom: 0.4rem;
+}
+
+.admin-stat-value {
+  font-family: var(--serif);
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: var(--admin-charcoal);
+  line-height: 1.2;
+}
+
+.admin-stat-meta {
+  font-size: 0.82rem;
+  color: var(--admin-charcoal-muted);
+  margin-top: 0.4rem;
+}
+
+/* Visual Bar Charts: Stone, Sage, Forest Green, Charcoal */
+.admin-chart-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.admin-chart-box {
+  background-color: var(--admin-stone);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-sm);
+  padding: 1.6rem;
+}
+
+.admin-chart-box h3 {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  color: var(--admin-charcoal);
+  margin-bottom: 0.3rem;
+}
+
+.admin-chart-box p {
+  font-size: 0.85rem;
+  color: var(--admin-charcoal-muted);
+  margin-bottom: 1.2rem;
+}
+
+.admin-chart-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.admin-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.admin-bar-label {
+  width: 140px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--admin-charcoal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-bar-track {
+  flex: 1;
+  height: 20px;
+  background-color: var(--admin-sage);
+  border: 1px solid var(--admin-border);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.admin-bar-fill {
+  height: 100%;
+  background-color: var(--admin-forest);
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.admin-bar-fill.accent {
+  background-color: var(--admin-forest-light);
+}
+
+.admin-bar-val {
+  width: 65px;
+  text-align: right;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--admin-charcoal);
+}
+
+/* Data Tables */
+.admin-table-wrap {
+  background-color: var(--admin-stone);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 1.2rem 0;
+}
+
+table.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  color: var(--admin-charcoal);
+  text-align: left;
+}
+
+table.admin-table th {
+  background-color: var(--admin-sage);
+  color: var(--admin-charcoal);
+  font-weight: 600;
+  padding: 0.9rem 1rem;
+  border-bottom: 2px solid var(--admin-border);
+  text-transform: uppercase;
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+table.admin-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--admin-border-subtle);
+  vertical-align: middle;
+}
+
+table.admin-table tbody tr:hover {
+  background-color: rgba(216, 217, 208, 0.5);
+}
+
+table.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Primary Buttons: Forest Green (#30483B) */
+.account-wrapper.admin-dashboard .btn.gold,
+.account-wrapper.admin-dashboard .btn.primary,
+.account-wrapper.admin-dashboard .admin-btn-primary {
+  background-color: var(--admin-forest) !important;
+  color: #FFFFFF !important;
+  border: 1px solid var(--admin-forest) !important;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 0.65rem 1.4rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.account-wrapper.admin-dashboard .btn.gold:hover,
+.account-wrapper.admin-dashboard .btn.primary:hover,
+.account-wrapper.admin-dashboard .admin-btn-primary:hover {
+  background-color: var(--admin-forest-dark) !important;
+  border-color: var(--admin-forest-dark) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px var(--admin-forest-glow);
+}
+
+/* Secondary & Ghost Buttons */
+.account-wrapper.admin-dashboard .btn.ghost,
+.account-wrapper.admin-dashboard .admin-btn-secondary {
+  background-color: var(--admin-stone);
+  color: var(--admin-charcoal);
+  border: 1px solid var(--admin-border);
+  padding: 0.55rem 1.15rem;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.account-wrapper.admin-dashboard .btn.ghost:hover,
+.account-wrapper.admin-dashboard .admin-btn-secondary:hover {
+  background-color: var(--admin-sage);
+  border-color: var(--admin-charcoal-muted);
+}
+
+/* Form Controls & Inputs */
+.account-wrapper.admin-dashboard input,
+.account-wrapper.admin-dashboard select,
+.account-wrapper.admin-dashboard textarea {
+  background-color: var(--admin-stone);
+  color: var(--admin-charcoal);
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  padding: 0.65rem 0.9rem;
+  font: 400 0.94rem var(--sans);
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.account-wrapper.admin-dashboard input:focus,
+.account-wrapper.admin-dashboard select:focus,
+.account-wrapper.admin-dashboard textarea:focus {
+  outline: none;
+  border-color: var(--admin-forest);
+  box-shadow: 0 0 0 3px var(--admin-forest-glow);
+}
+
+.account-wrapper.admin-dashboard label {
+  color: var(--admin-charcoal);
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+/* Upload Dropzone */
+.account-wrapper.admin-dashboard .upload-dropzone {
+  border: 2px dashed var(--admin-forest);
+  background-color: var(--admin-stone);
+  color: var(--admin-charcoal-muted);
+  border-radius: var(--radius);
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.account-wrapper.admin-dashboard .upload-dropzone:hover {
+  background-color: var(--admin-sage-light);
+  border-color: var(--admin-forest-dark);
+}
+
+/* Quick Stock Edit Controls */
+.admin-stock-control {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--admin-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--admin-stone);
+}
+
+.admin-stock-btn {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--admin-charcoal);
+  font-size: 0.95rem;
+  transition: background 0.15s;
+}
+
+.admin-stock-btn:hover {
+  background-color: var(--admin-sage);
+}
+
+.admin-stock-num {
+  padding: 0.25rem 0.6rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  min-width: 30px;
+  text-align: center;
+  border-left: 1px solid var(--admin-border);
+  border-right: 1px solid var(--admin-border);
+}
+
+/* Status Badges */
+.admin-pill {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-pill.forest {
+  background-color: var(--admin-forest);
+  color: #FFFFFF;
+}
+
+.admin-pill.sage {
+  background-color: var(--admin-sage-dark);
+  color: var(--admin-charcoal);
+}
+
+.admin-pill.warn {
+  background-color: #E8B923;
+  color: #3C2A02;
+}
+
+.admin-pill.danger {
+  background-color: #D32F2F;
+  color: #FFFFFF;
+}
+
+/* Responsive Table Adjustments */
+@media (max-width: 768px) {
+  .account-wrapper.admin-dashboard {
+    padding: 0 1rem;
+    margin: 1.5rem auto 3rem;
+  }
+  .admin-stat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .admin-chart-section {
+    grid-template-columns: 1fr;
+  }
+  .account-wrapper.admin-dashboard .account-card {
+    padding: 1.3rem;
+  }
+}
+
+/* Live Sync Header & Indicators */
+.admin-live-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background-color: var(--admin-sage-light);
+  border: 1px solid var(--admin-border);
+  padding: 0.9rem 1.4rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 1.8rem;
+}
+
+.admin-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--admin-forest);
+}
+
+.admin-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #2E7D32;
+  box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.7);
+  animation: adminPulse 2s infinite;
+}
+
+@keyframes adminPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(46, 125, 50, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(46, 125, 50, 0);
+  }
+}
+
+/* Sales Graph Controls & Bars */
+.admin-graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.admin-graph-toggle {
+  display: inline-flex;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: var(--admin-stone);
+}
+
+.admin-graph-toggle-btn {
+  background: none;
+  border: none;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--admin-charcoal-muted);
+  transition: all 0.2s ease;
+}
+
+.admin-graph-toggle-btn:hover {
+  background-color: var(--admin-sage);
+  color: var(--admin-charcoal);
+}
+
+.admin-graph-toggle-btn.active {
+  background-color: var(--admin-forest);
+  color: #FFFFFF;
+}
+
+.admin-sales-chart-wrap {
+  height: 220px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1.2rem;
+  padding: 1.2rem 0.8rem 0.5rem;
+  border-bottom: 1px solid var(--admin-border);
+  overflow-x: auto;
+  min-width: 100%;
+}
+
+.admin-sales-col {
+  flex: 1;
+  min-width: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  height: 100%;
+}
+
+.admin-sales-bar-container {
+  width: 100%;
+  max-width: 44px;
+  height: 160px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.admin-sales-bar {
+  width: 100%;
+  background: linear-gradient(180deg, var(--admin-forest-light), var(--admin-forest));
+  border-radius: 4px 4px 0 0;
+  transition: height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  min-height: 4px;
+  position: relative;
+}
+
+.admin-sales-bar:hover {
+  background: linear-gradient(180deg, var(--admin-forest), var(--admin-forest-dark));
+  box-shadow: 0 4px 12px var(--admin-forest-glow);
+}
+
+.admin-sales-val {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--admin-charcoal);
+}
+
+.admin-sales-date {
+  font-size: 0.74rem;
+  color: var(--admin-charcoal-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.admin-sales-count {
+  font-size: 0.7rem;
+  color: var(--admin-charcoal-subtle);
+}
+
+/* Rank Items (Best Sellers & Most Viewed) */
+.admin-rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-rank-item {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  background-color: var(--admin-stone);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.admin-rank-item:hover {
+  background-color: var(--admin-sage-light);
+}
+
+.admin-rank-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: var(--admin-sage-dark);
+  color: var(--admin-charcoal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.admin-rank-num.gold {
+  background-color: var(--admin-forest);
+  color: #FFFFFF;
+}
+
+.admin-rank-thumb {
+  width: 42px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--admin-border);
+  flex-shrink: 0;
+}
+
+.admin-rank-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-rank-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--admin-charcoal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-rank-meta {
+  font-size: 0.8rem;
+  color: var(--admin-charcoal-muted);
+  margin-top: 0.15rem;
+}
+
+.admin-rank-val {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.admin-rank-val strong {
+  display: block;
+  font-size: 0.94rem;
+  color: var(--admin-forest);
+}
+
+.admin-rank-val span {
+  font-size: 0.78rem;
+  color: var(--admin-charcoal-muted);
+}
+
+/* Customer Activity Feed Stream */
+.admin-activity-stream {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid var(--admin-border-subtle);
+  transition: background 0.15s ease;
+}
+
+.admin-activity-item:last-child {
+  border-bottom: none;
+}
+
+.admin-activity-item:hover {
+  background-color: rgba(216, 217, 208, 0.35);
+}
+
+.admin-activity-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  flex-shrink: 0;
+  background-color: var(--admin-sage);
+  color: var(--admin-charcoal);
+  border: 1px solid var(--admin-border);
+}
+
+.admin-activity-icon.order {
+  background-color: #E8F5E9;
+  color: #2E7D32;
+  border-color: #C8E6C9;
+}
+
+.admin-activity-icon.cart {
+  background-color: #E0F2FE;
+  color: #0369A1;
+  border-color: #BAE6FD;
+}
+
+.admin-activity-icon.view {
+  background-color: #F3E8FF;
+  color: #7E22CE;
+  border-color: #E9D5FF;
+}
+
+.admin-activity-icon.register {
+  background-color: #FEF3C7;
+  color: #B45309;
+  border-color: #FDE68A;
+}
+
+.admin-activity-icon.cancel {
+  background-color: #FEE2E2;
+  color: #B91C1C;
+  border-color: #FECACA;
+}
+
+.admin-activity-icon.return {
+  background-color: #FFEDD5;
+  color: #C2410C;
+  border-color: #FED7AA;
+}
+
+.admin-activity-icon.review {
+  background-color: #FEF9C3;
+  color: #A16207;
+  border-color: #FEF08A;
+}
+
+.admin-activity-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-activity-desc {
+  font-size: 0.91rem;
+  color: var(--admin-charcoal);
+  line-height: 1.45;
+}
+
+.admin-activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--admin-charcoal-muted);
+  margin-top: 0.3rem;
+}
+
+.admin-activity-actor {
+  font-weight: 600;
+  color: var(--admin-forest);
+}
+
+/* Activity Filter Bar */
+.admin-filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.3rem;
+}
+
+.admin-filter-chip {
+  background-color: var(--admin-stone);
+  border: 1px solid var(--admin-border);
+  color: var(--admin-charcoal);
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-filter-chip:hover {
+  background-color: var(--admin-sage);
+}
+
+.admin-filter-chip.active {
+  background-color: var(--admin-forest);
+  color: #FFFFFF;
+  border-color: var(--admin-forest);
+}

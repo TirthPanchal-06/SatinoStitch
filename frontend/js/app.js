@@ -167,10 +167,18 @@
     const user = db.get('user', null);
     const activeCur = getCurrency();
 
-    // Site Header
+    // Site Header (Excluded from Admin Panel)
+    const isAdminMode = document.body.dataset.page === 'admin' || 
+                        document.body.classList.contains('admin-dashboard-theme') || 
+                        (user && user.role === 'admin' && (file === 'admin.html' || file === 'login.html'));
     const headerEl = $('#site-header');
     if (headerEl) {
-      headerEl.innerHTML = `
+      if (isAdminMode) {
+        headerEl.innerHTML = '';
+        headerEl.style.display = 'none';
+      } else {
+        headerEl.style.display = '';
+        headerEl.innerHTML = `
         <div class="announcement-bar">
           <div class="wrap announcement-in">
             <div class="announcement-ticker">
@@ -183,7 +191,7 @@
               <select class="currency-select" id="cur-select" aria-label="Select Currency">
                 ${Object.entries(CURRENCIES).map(([k, v]) => `<option value="${k}" ${k === activeCur ? 'selected' : ''}>${v.label}</option>`).join('')}
               </select>
-              <span>${user ? `<a href="login.html" style="color:var(--gold-light);font-weight:500">My Account (${esc(user.name.split(' ')[0])})</a>` : `<a href="login.html" style="color:var(--gold-light)">Sign In</a>`}</span>
+              <span>${user ? `<a href="${user.role === 'admin' ? 'admin.html' : 'login.html'}" style="color:var(--gold-light);font-weight:500">${user.role === 'admin' ? 'Admin Dashboard' : `My Account (${esc(user.name.split(' ')[0])})`}</a>` : `<a href="login.html" style="color:var(--gold-light)">Sign In</a>`}</span>
             </div>
           </div>
         </div>
@@ -218,6 +226,7 @@
             </div>
           </div>
         </header>`;
+      }
     }
 
     // Site Footer
@@ -367,11 +376,17 @@
     hit ? hit.qty += qty : cart.push({ id, size, qty, color: selectedColor });
     db.set('cart', cart);
 
-    // Sync to PostgreSQL cart table when authenticated
+    // Sync to PostgreSQL cart table when authenticated or record guest cart activity
     if (db.token()) {
       fetchAuth('/api/cart', {
         method: 'POST',
         body: { productId: id, size, color: selectedColor, quantity: qty }
+      }).catch(() => {});
+    } else {
+      fetch('/api/activity/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: id, size, color: selectedColor, quantity: qty })
       }).catch(() => {});
     }
   }
@@ -500,6 +515,16 @@
     const p = byId(id);
     if (!p) return;
     window._qvProductId = p.id;
+
+    // Track product view in analytics
+    fetch(`/api/products/${p.id}/view`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(db.token() ? { 'Authorization': `Bearer ${db.token()}` } : {})
+      }
+    }).catch(() => {});
+
     const modal = $('#quick-view-modal');
     if (!modal) return;
     const on = db.isWishlisted(p.id);
@@ -901,7 +926,8 @@
 
       let p = byId(id);
       try {
-        const res = await fetch(`/api/products/${id}`);
+        const headers = db.token() ? { 'Authorization': `Bearer ${db.token()}` } : {};
+        const res = await fetch(`/api/products/${id}`, { headers });
         if (res.ok) {
           p = await res.json();
           const idx = PRODUCTS.findIndex(x => x.id === p.id);
@@ -1497,43 +1523,1235 @@
       const user = db.get('user', null);
       const token = db.token();
 
-      // If user is already authenticated, render full Patron Dashboard
+      // If user is already authenticated, render full Patron / Admin Dashboard
       if (user && token) {
-        root.className = 'account-wrapper';
-        root.innerHTML = `
-          <div class="account-header">
-            <div>
-              <span class="hero-pill" style="margin-bottom:0.4rem;display:inline-block">${user.role === 'admin' ? 'Atelier Master' : 'VIP Patron'}</span>
-              <h1 style="font-size:2.2rem">${esc(user.name)}</h1>
-              <p class="muted">${esc(user.email)} · Phone: ${esc(user.phone || 'Not registered')}</p>
+        const isAdmin = user.role === 'admin';
+
+        if (isAdmin) {
+          root.className = 'account-wrapper admin-dashboard';
+          document.body.classList.add('admin-dashboard-theme');
+          const siteHeader = $('#site-header');
+          if (siteHeader) {
+            siteHeader.innerHTML = '';
+            siteHeader.style.display = 'none';
+          }
+          root.innerHTML = `
+            <div class="account-header">
+              <div style="display:flex;align-items:center;gap:1.2rem">
+                <img src="images/emblem.png" alt="SATINOSTITCH" style="height:44px;width:auto;border-radius:4px">
+                <div>
+                  <span class="admin-role-badge">Atelier Master &bull; Administrator</span>
+                  <h1 style="font-family:var(--serif);font-size:2rem;margin:0.2rem 0;color:var(--admin-charcoal)">SATINOSTITCH Atelier Portal</h1>
+                  <p class="admin-subtext">${esc(user.name)} &bull; ${esc(user.email)} &bull; Status: Active Curator</p>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.75rem">
+                <a href="index.html" class="btn ghost sm" style="color:var(--admin-charcoal);border-color:var(--admin-border);text-decoration:none">View Storefront</a>
+                <button class="btn ghost sm" id="signout-btn" style="color:var(--admin-charcoal);border-color:var(--admin-border)">Sign Out</button>
+              </div>
             </div>
-            <button class="btn ghost sm" id="signout-btn" style="color:#b91c1c;border-color:#fca5a5">Sign Out</button>
-          </div>
 
-          <div class="account-nav">
-            <button class="account-tab-btn active" data-tab="orders">My Orders &amp; Tracking</button>
-            <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
-            <button class="account-tab-btn" data-tab="wishlist">Curated Wishlist</button>
-            <button class="account-tab-btn" data-tab="profile">Profile Details</button>
-            ${user.role === 'admin' ? `<button class="account-tab-btn" data-tab="crud">Atelier Garment Management (CRUD)</button>` : ''}
-          </div>
+            <div class="account-nav">
+              <button class="account-tab-btn active" data-tab="overview">Atelier Overview &amp; Analytics</button>
+              <button class="account-tab-btn" data-tab="admin-orders">All Orders &amp; Fulfillment</button>
+              <button class="account-tab-btn" data-tab="activity">Customer Activity Feed</button>
+              <button class="account-tab-btn" data-tab="crud">Garment Management (CRUD)</button>
+              <button class="account-tab-btn" data-tab="coupons">Promotional Coupons</button>
+              <button class="account-tab-btn" data-tab="users">Patrons &amp; Staff Roles</button>
+              <button class="account-tab-btn" data-tab="orders">My Personal Orders</button>
+              <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
+              <button class="account-tab-btn" data-tab="profile">Profile Details</button>
+            </div>
 
-          <div id="account-tab-content">Loading your bespoke details...</div>
-        `;
+            <div id="account-tab-content">Loading bespoke atelier data...</div>
+          `;
+        } else {
+          root.className = 'account-wrapper';
+          document.body.classList.remove('admin-dashboard-theme');
+          root.innerHTML = `
+            <div class="account-header">
+              <div>
+                <span class="hero-pill" style="margin-bottom:0.4rem;display:inline-block">VIP Patron</span>
+                <h1 style="font-size:2.2rem">${esc(user.name)}</h1>
+                <p class="muted">${esc(user.email)} · Phone: ${esc(user.phone || 'Not registered')}</p>
+              </div>
+              <button class="btn ghost sm" id="signout-btn" style="color:#b91c1c;border-color:#fca5a5">Sign Out</button>
+            </div>
+
+            <div class="account-nav">
+              <button class="account-tab-btn active" data-tab="orders">My Orders &amp; Tracking</button>
+              <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
+              <button class="account-tab-btn" data-tab="wishlist">Curated Wishlist</button>
+              <button class="account-tab-btn" data-tab="profile">Profile Details</button>
+            </div>
+
+            <div id="account-tab-content">Loading your bespoke details...</div>
+          `;
+        }
 
         $('#signout-btn').onclick = () => {
+          if (window._adminSyncInterval) clearInterval(window._adminSyncInterval);
+          document.body.classList.remove('admin-dashboard-theme');
+          const siteHeader = $('#site-header');
+          if (siteHeader) siteHeader.style.display = '';
           db.clearAuth();
           toast('You have successfully signed out.');
           setTimeout(() => { location.href = 'index.html'; }, 500);
         };
 
-        const renderTab = async (tabName) => {
+        // Utility: Relative time formatter for live activities
+        const timeAgo = (dateStr) => {
+          if (!dateStr) return 'Just now';
+          const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+          if (diff < 15) return 'Just now';
+          if (diff < 60) return `${diff}s ago`;
+          if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+          if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+          return new Date(dateStr).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        };
+
+        // Utility: Activity icon, class and semantic label
+        const getActivityMeta = (type) => {
+          switch (type) {
+            case 'order_placed':
+              return { icon: '🛍️', cls: 'order', label: 'Order Commission' };
+            case 'payment_received':
+              return { icon: '💳', cls: 'order', label: 'Payment Settled' };
+            case 'payment_status_update':
+              return { icon: '💰', cls: 'order', label: 'Payment Status' };
+            case 'cart_addition':
+              return { icon: '🛒', cls: 'cart', label: 'Bag Addition' };
+            case 'view':
+              return { icon: '👁️', cls: 'view', label: 'Storefront View' };
+            case 'register':
+              return { icon: '👑', cls: 'register', label: 'Patron Enrolment' };
+            case 'cancellation':
+              return { icon: '✕', cls: 'cancel', label: 'Order Cancelled' };
+            case 'return_request':
+              return { icon: '↩', cls: 'return', label: 'Return Initiated' };
+            case 'review_submission':
+              return { icon: '★', cls: 'review', label: 'Patron Review' };
+            case 'order_status_update':
+              return { icon: '🚚', cls: 'order', label: 'Fulfillment Dispatch' };
+            default:
+              return { icon: '⚡', cls: '', label: 'Atelier Event' };
+          }
+        };
+
+        const renderTab = async (tabName, isSilent = false) => {
           $$('.account-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
           const container = $('#account-tab-content');
           if (!container) return;
 
-          /* --- TAB 1: Orders & Tracking --- */
-          if (tabName === 'orders') {
+          // Manage live sync auto-polling (every 15s) for real-time monitoring
+          if (window._adminSyncInterval) clearInterval(window._adminSyncInterval);
+          if (isAdmin && (tabName === 'overview' || tabName === 'activity')) {
+            window._adminSyncInterval = setInterval(() => {
+              if (document.hidden) return;
+              const currentActive = $('.account-tab-btn.active')?.dataset.tab;
+              if (currentActive === 'overview' || currentActive === 'activity') {
+                renderTab(currentActive, true);
+              }
+            }, 15000);
+          }
+
+          /* ==========================================================================
+             ADMIN TAB 1: Atelier Overview & Real-Time Analytics
+             ========================================================================== */
+          if (tabName === 'overview') {
+            if (!isSilent) {
+              container.innerHTML = '<p class="muted">Connecting to PostgreSQL atelier analytics &amp; live activity feed...</p>';
+            }
+
+            try {
+              const res = await fetchAuth('/api/admin/analytics');
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'Failed to retrieve analytics');
+
+              const summary = data.summary || data.kpis || {};
+              const salesGraphs = data.salesGraphs || { daily: [], weekly: [], monthly: [] };
+              const bestSellers = data.bestSellers || [];
+              const mostViewed = data.mostViewed || [];
+              const lowStockItems = data.lowStockAlerts || [];
+              const recentOrders = data.recentOrders || [];
+              const recentActivities = data.recentActivities || [];
+              const demandCat = data.demandByCategory || [];
+
+              // Active range for sales graph (daily, weekly, monthly)
+              const activeRange = window._adminChartRange || 'daily';
+              const graphData = salesGraphs[activeRange] || [];
+              const maxRev = Math.max(...graphData.map(d => Number(d.revenue) || 0), 1000);
+              const totalRangeRev = graphData.reduce((acc, d) => acc + (Number(d.revenue) || 0), 0);
+              const totalRangeOrders = graphData.reduce((acc, d) => acc + (Number(d.orders) || 0), 0);
+
+              // Category demand calculations
+              const maxDemandSold = Math.max(...demandCat.map(c => Number(c.total_units_sold) || 0), 1);
+              const maxCatViews = Math.max(...demandCat.map(c => Number(c.total_views) || 0), 1);
+
+              // Status pipeline calculations
+              const statusCounts = summary.statusCounts || {
+                'Confirmed': 0, 'In Atelier': 0, 'Dispatched': 0, 'Delivered': 0, 'Cancelled': 0
+              };
+              const maxOrderCount = Math.max(...Object.values(statusCounts), 1);
+
+              const nowTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+              container.innerHTML = `
+                <!-- Live Synchronization Banner -->
+                <div class="admin-live-header">
+                  <div>
+                    <span class="admin-live-badge">
+                      <span class="admin-live-dot"></span>
+                      PostgreSQL Real-Time Synchronisation Active
+                    </span>
+                    <p style="margin:0.25rem 0 0;font-size:0.83rem;color:var(--admin-charcoal-muted)">
+                      Live pulse synced across customer browsing, cart additions, commissions, and fulfillment.
+                    </p>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:0.9rem">
+                    <span style="font-size:0.82rem;color:var(--admin-charcoal-muted)">Refreshed: ${nowTime}</span>
+                    <button class="btn ghost sm" id="admin-manual-sync-btn" style="padding:0.35rem 0.85rem;font-size:0.82rem">
+                      🔄 Sync Now
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 6 Metric KPI Tiles from Real Database Records -->
+                <div class="admin-stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:1rem;margin-bottom:1.8rem">
+                  <div class="admin-stat-tile">
+                    <div class="admin-stat-title">Gross Revenue</div>
+                    <div class="admin-stat-value" style="color:var(--admin-forest)">${money(summary.grossRevenue || 0)}</div>
+                    <div class="admin-stat-meta">Net (excl. discounts): ${money(summary.netRevenue || 0)}</div>
+                  </div>
+                  <div class="admin-stat-tile">
+                    <div class="admin-stat-title">Patron Orders</div>
+                    <div class="admin-stat-value">${summary.validOrdersCount || 0}</div>
+                    <div class="admin-stat-meta">Avg Order Value: ${money(summary.averageOrderValue || 0)}</div>
+                  </div>
+                  <div class="admin-stat-tile">
+                    <div class="admin-stat-title">Registered Patrons</div>
+                    <div class="admin-stat-value">${summary.totalCustomers || 0}</div>
+                    <div class="admin-stat-meta">Curated patrons in database</div>
+                  </div>
+                  <div class="admin-stat-tile">
+                    <div class="admin-stat-title">Storefront Demand</div>
+                    <div class="admin-stat-value">${summary.totalViews || 0} views</div>
+                    <div class="admin-stat-meta">Tracked garment visits</div>
+                  </div>
+                  <div class="admin-stat-tile">
+                    <div class="admin-stat-title">Atelier Stock Units</div>
+                    <div class="admin-stat-value">${summary.totalStock || 0} pcs</div>
+                    <div class="admin-stat-meta">Across ${summary.totalProducts || 0} active designs</div>
+                  </div>
+                  <div class="admin-stat-tile">
+                    <div class="admin-stat-title">Low Stock Alerts</div>
+                    <div class="admin-stat-value" style="color:${summary.lowStockCount > 0 ? '#B91C1C' : 'var(--admin-forest)'}">
+                      ${summary.lowStockCount || 0} items
+                    </div>
+                    <div class="admin-stat-meta">${summary.lowStockCount > 0 ? 'Requires immediate restock' : 'All stock levels optimal'}</div>
+                  </div>
+                </div>
+
+                <!-- Interactive Sales & Revenue Analytics Graph -->
+                <div class="admin-surface-card" style="margin-bottom:1.8rem">
+                  <div class="admin-graph-header">
+                    <div>
+                      <h3 style="margin-bottom:0.2rem">Haute Couture Sales &amp; Revenue Analytics</h3>
+                      <p class="muted" style="font-size:0.86rem">
+                        Period Revenue: <strong>${money(totalRangeRev)}</strong> &bull; Volume: <strong>${totalRangeOrders} orders</strong> (excludes cancelled orders)
+                      </p>
+                    </div>
+                    <div class="admin-graph-toggle">
+                      <button class="admin-graph-toggle-btn ${activeRange === 'daily' ? 'active' : ''}" data-range="daily">Daily (7 Days)</button>
+                      <button class="admin-graph-toggle-btn ${activeRange === 'weekly' ? 'active' : ''}" data-range="weekly">Weekly (4 Weeks)</button>
+                      <button class="admin-graph-toggle-btn ${activeRange === 'monthly' ? 'active' : ''}" data-range="monthly">Monthly (6 Months)</button>
+                    </div>
+                  </div>
+
+                  <div class="admin-sales-chart-wrap">
+                    ${graphData.length ? graphData.map(d => {
+                      const rev = Number(d.revenue) || 0;
+                      const pct = Math.min(100, Math.max(6, Math.round((rev / maxRev) * 100)));
+                      return `
+                        <div class="admin-sales-col" title="${esc(d.label || d.key)}: ${money(rev)} (${d.orders || 0} orders)">
+                          <div class="admin-sales-val">${rev > 0 ? money(rev) : '₹0'}</div>
+                          <div class="admin-sales-bar-container">
+                            <div class="admin-sales-bar" style="height:${pct}%"></div>
+                          </div>
+                          <div class="admin-sales-date">${esc(d.label || d.key)}</div>
+                          <div class="admin-sales-count">${d.orders || 0} orders</div>
+                        </div>
+                      `;
+                    }).join('') : '<p class="muted" style="padding:2rem">No sales data recorded in this period.</p>'}
+                  </div>
+                </div>
+
+                <!-- Two-Column Product Performance: Best-Sellers vs Most-Viewed Demand -->
+                <div class="admin-chart-section" style="margin-bottom:1.8rem">
+                  <!-- Column 1: Best-Selling Garments -->
+                  <div class="admin-chart-box">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                      <div>
+                        <h3>Best-Selling Garments</h3>
+                        <p style="margin:0">Ranked by actual pieces sold &amp; revenue</p>
+                      </div>
+                      <span class="admin-pill forest">Top Performers</span>
+                    </div>
+
+                    ${bestSellers.length ? `
+                      <div class="admin-rank-list">
+                        ${bestSellers.map((item, idx) => `
+                          <div class="admin-rank-item">
+                            <span class="admin-rank-num ${idx < 3 ? 'gold' : ''}">#${idx + 1}</span>
+                            <img class="admin-rank-thumb" src="${item.image || 'images/p1.jpg'}" alt="${esc(item.product_name || item.name)}">
+                            <div class="admin-rank-info">
+                              <div class="admin-rank-name">${esc(item.product_name || item.name)}</div>
+                              <div class="admin-rank-meta">
+                                <span class="admin-pill sage" style="font-size:0.68rem;padding:0.1rem 0.45rem">${item.cat === 'ethnic' ? 'Ethnic' : 'Western'}</span>
+                                &bull; In Stock: ${item.stock} pcs
+                              </div>
+                            </div>
+                            <div class="admin-rank-val">
+                              <strong>${item.total_sold || item.totalSold || 0} sold</strong>
+                              <span>${money(item.total_revenue || item.totalRevenue || 0)}</span>
+                            </div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : '<p class="muted">No garment orders fulfilled yet.</p>'}
+                  </div>
+
+                  <!-- Column 2: Most-Viewed Storefront Demand -->
+                  <div class="admin-chart-box">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                      <div>
+                        <h3>Most-Viewed Garments</h3>
+                        <p style="margin:0">Live customer traffic &amp; product interest</p>
+                      </div>
+                      <span class="admin-pill sage">Storefront Interest</span>
+                    </div>
+
+                    ${mostViewed.length ? `
+                      <div class="admin-rank-list">
+                        ${mostViewed.map((item, idx) => `
+                          <div class="admin-rank-item">
+                            <span class="admin-rank-num">#${idx + 1}</span>
+                            <img class="admin-rank-thumb" src="${item.image || 'images/p1.jpg'}" alt="${esc(item.name)}">
+                            <div class="admin-rank-info">
+                              <div class="admin-rank-name">${esc(item.name)}</div>
+                              <div class="admin-rank-meta">
+                                <strong>${money(item.price)}</strong> &bull; Rating: ★ ${item.rating || '4.9'}
+                              </div>
+                            </div>
+                            <div class="admin-rank-val">
+                              <strong style="color:var(--admin-forest)">${item.views_count || item.viewsCount || 0} views</strong>
+                              <span style="color:${item.stock <= 5 ? '#B91C1C' : 'inherit'}">${item.stock} in stock</span>
+                            </div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : '<p class="muted">No garment views recorded yet.</p>'}
+                  </div>
+                </div>
+
+                <!-- Two-Column Category Demand & Order Pipeline -->
+                <div class="admin-chart-section" style="margin-bottom:1.8rem">
+                  <div class="admin-chart-box">
+                    <h3>Silhouette Demand &amp; Sales</h3>
+                    <p>Comparison of customer units commissioned across active silhouettes</p>
+                    <div class="admin-chart-bars">
+                      ${demandCat.map(c => {
+                        const units = Number(c.total_units_sold) || 0;
+                        const views = Number(c.total_views) || 0;
+                        const pct = Math.round((units / maxDemandSold) * 100);
+                        return `
+                          <div class="admin-bar-row">
+                            <span class="admin-bar-label">${esc(c.label)}</span>
+                            <div class="admin-bar-track">
+                              <div class="admin-bar-fill" style="width:${pct}%"></div>
+                            </div>
+                            <span class="admin-bar-val">${units} sold (${views} views)</span>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  </div>
+
+                  <div class="admin-chart-box">
+                    <h3>Order Fulfillment Pipeline</h3>
+                    <p>Current volume distribution across order lifecycle</p>
+                    <div class="admin-chart-bars">
+                      ${Object.entries(statusCounts).map(([status, cnt]) => {
+                        const pct = Math.round((cnt / maxOrderCount) * 100);
+                        return `
+                          <div class="admin-bar-row">
+                            <span class="admin-bar-label">${status}</span>
+                            <div class="admin-bar-track">
+                              <div class="admin-bar-fill accent" style="width:${pct}%"></div>
+                            </div>
+                            <span class="admin-bar-val">${cnt} orders</span>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Low Stock Priority Restock Table -->
+                <div class="admin-surface-card" style="margin-bottom:1.8rem">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.8rem">
+                    <div>
+                      <h3 style="margin-bottom:0.2rem">Atelier Restock Priority</h3>
+                      <p class="muted" style="font-size:0.86rem">Garments with 5 or fewer units remaining in atelier inventory</p>
+                    </div>
+                    ${lowStockItems.length ? `<span class="admin-pill warn">${lowStockItems.length} Urgent Restocks</span>` : ''}
+                  </div>
+
+                  ${lowStockItems.length ? `
+                    <div class="admin-table-wrap">
+                      <table class="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Garment</th>
+                            <th>Category</th>
+                            <th>Price</th>
+                            <th>Stock Level</th>
+                            <th>Quick Replenishment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${lowStockItems.map(it => `
+                            <tr>
+                              <td>
+                                <div style="display:flex;align-items:center;gap:0.8rem">
+                                  <img src="${it.image || 'images/p1.jpg'}" alt="${esc(it.name)}" style="width:36px;height:46px;object-fit:cover;border-radius:4px;border:1px solid var(--admin-border)">
+                                  <strong>${esc(it.name)}</strong>
+                                </div>
+                              </td>
+                              <td><span class="admin-pill sage">${it.cat === 'ethnic' ? 'Ethnic Couture' : 'Western Pret'}</span></td>
+                              <td><strong>${money(it.price)}</strong></td>
+                              <td>
+                                <span class="admin-pill warn">${it.stock} units left</span>
+                              </td>
+                              <td>
+                                <div style="display:flex;gap:0.5rem">
+                                  <button class="btn gold sm restock-quick-btn" data-pid="${it.id}" data-current="${it.stock}" data-add="5">+5 Units</button>
+                                  <button class="btn ghost sm restock-quick-btn" data-pid="${it.id}" data-current="${it.stock}" data-add="10">+10 Units</button>
+                                </div>
+                              </td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  ` : `
+                    <p class="muted" style="padding:1rem 0">All inventory units are abundantly stocked across the atelier.</p>
+                  `}
+                </div>
+
+                <!-- Recent Orders & Payment Updates -->
+                <div class="admin-surface-card" style="margin-bottom:1.8rem">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.8rem">
+                    <div>
+                      <h3 style="margin-bottom:0.2rem">Recent Patron Commissions</h3>
+                      <p class="muted" style="font-size:0.86rem">Latest orders placed with real-time payment and dispatch statuses</p>
+                    </div>
+                    <button class="btn ghost sm" id="go-all-orders-btn">View All Orders &amp; Fulfillment &rarr;</button>
+                  </div>
+
+                  ${recentOrders.length ? `
+                    <div class="admin-table-wrap">
+                      <table class="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Order ID</th>
+                            <th>Patron</th>
+                            <th>Date</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Status</th>
+                            <th>Quick Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${recentOrders.map(o => `
+                            <tr>
+                              <td>
+                                <strong style="color:var(--admin-forest)">#${esc(o.id)}</strong>
+                                <div style="font-size:0.76rem;color:var(--admin-charcoal-muted)">${o.item_count || 1} items</div>
+                              </td>
+                              <td>
+                                <div><strong>${esc(o.customer_name || 'VIP Patron')}</strong></div>
+                                <div style="font-size:0.76rem;color:var(--admin-charcoal-muted)">${esc(o.customer_email || '')}</div>
+                              </td>
+                              <td>${new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</td>
+                              <td><strong>${money(o.total)}</strong></td>
+                              <td>
+                                <span class="admin-pill sage">${(o.payment_method || 'COD').toUpperCase()}</span>
+                                <span class="admin-pill ${o.payment_status === 'paid' ? 'forest' : 'warn'}" style="margin-left:0.3rem">
+                                  ${(o.payment_status || 'Pending').toUpperCase()}
+                                </span>
+                              </td>
+                              <td>
+                                <select class="overview-order-status-select" data-order-id="${o.id}" style="width:auto;padding:0.3rem 0.5rem;font-size:0.84rem">
+                                  ${['Confirmed', 'In Atelier', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
+                                    <option value="${st}" ${st === o.status ? 'selected' : ''}>${st}</option>
+                                  `).join('')}
+                                </select>
+                              </td>
+                              <td>
+                                <button class="btn gold sm save-overview-status-btn" data-order-id="${o.id}">Update</button>
+                              </td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  ` : '<p class="muted" style="padding:1rem 0">No orders registered yet.</p>'}
+                </div>
+
+                <!-- Live Customer Activity Feed Widget -->
+                <div class="admin-surface-card">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.8rem">
+                    <div>
+                      <h3 style="margin-bottom:0.2rem">Live Patron Activity Stream</h3>
+                      <p class="muted" style="font-size:0.86rem">Real-time audit log of browsing, cart updates, registrations and commissions</p>
+                    </div>
+                    <button class="btn ghost sm" id="go-activity-tab-btn">View Full Activity Feed &rarr;</button>
+                  </div>
+
+                  ${recentActivities.length ? `
+                    <div class="admin-activity-stream">
+                      ${recentActivities.slice(0, 8).map(act => {
+                        const meta = getActivityMeta(act.activity_type);
+                        return `
+                          <div class="admin-activity-item">
+                            <div class="admin-activity-icon ${meta.cls}">${meta.icon}</div>
+                            <div class="admin-activity-body">
+                              <div class="admin-activity-desc">${esc(act.description)}</div>
+                              <div class="admin-activity-meta">
+                                <span class="admin-activity-actor">${esc(act.user_name || 'Guest Patron')}</span>
+                                <span>&bull;</span>
+                                <span>${meta.label}</span>
+                                <span>&bull;</span>
+                                <span>${timeAgo(act.created_at)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : '<p class="muted" style="padding:1rem 0">No customer activity recorded yet.</p>'}
+                </div>
+              `;
+
+              // Event Delegate: Sales graph toggle
+              $$('.admin-graph-toggle-btn').forEach(btn => {
+                btn.onclick = () => {
+                  window._adminChartRange = btn.dataset.range;
+                  renderTab('overview', true);
+                };
+              });
+
+              // Event Delegate: Manual Sync Now
+              const manualSyncBtn = $('#admin-manual-sync-btn');
+              if (manualSyncBtn) {
+                manualSyncBtn.onclick = () => {
+                  toast('Refreshing atelier metrics from PostgreSQL...');
+                  renderTab('overview', true);
+                };
+              }
+
+              // Event Delegate: Navigation shortcuts
+              const allOrdBtn = $('#go-all-orders-btn');
+              if (allOrdBtn) allOrdBtn.onclick = () => renderTab('admin-orders');
+              const actTabBtn = $('#go-activity-tab-btn');
+              if (actTabBtn) actTabBtn.onclick = () => renderTab('activity');
+
+              // Event Delegate: Quick Restock Buttons
+              $$('.restock-quick-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  const pid = btn.dataset.pid;
+                  const add = Number(btn.dataset.add || 5);
+                  const newStock = Number(btn.dataset.current) + add;
+                  try {
+                    const r = await fetchAuth(`/api/products/${pid}/stock`, {
+                      method: 'PUT',
+                      body: { stock: newStock }
+                    });
+                    if (!r.ok) throw new Error((await r.json()).error);
+                    toast(`Stock successfully replenished (+${add} units) in PostgreSQL.`);
+                    renderTab('overview', true);
+                  } catch (e) {
+                    toast(e.message || 'Could not update stock.');
+                  }
+                };
+              });
+
+              // Event Delegate: Save Order Status from Overview
+              $$('.save-overview-status-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  const oid = btn.dataset.orderId;
+                  const select = $(`.overview-order-status-select[data-order-id="${oid}"]`);
+                  if (!select) return;
+                  const newStatus = select.value;
+                  try {
+                    const r = await fetchAuth(`/api/orders/${oid}/status`, {
+                      method: 'PUT',
+                      body: { status: newStatus }
+                    });
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.error);
+                    toast(`Order #${oid} status updated to ${newStatus}.`);
+                    renderTab('overview', true);
+                  } catch (e) {
+                    toast(e.message || 'Could not update order status.');
+                  }
+                };
+              });
+
+            } catch (err) {
+              container.innerHTML = `<p class="muted">Could not load atelier analytics: ${esc(err.message)}</p>`;
+            }
+          }
+
+          /* ==========================================================================
+             ADMIN TAB 2: Live Customer Activity Feed (Dedicated Tab)
+             ========================================================================== */
+          else if (tabName === 'activity') {
+            if (!isSilent) {
+              container.innerHTML = '<p class="muted">Loading real-time patron activity stream...</p>';
+            }
+
+            try {
+              const currentFilter = window._activityFilter || '';
+              const url = currentFilter ? `/api/admin/activities?limit=60&type=${currentFilter}` : '/api/admin/activities?limit=60';
+              const res = await fetchAuth(url);
+              const activities = await res.json();
+              const list = Array.isArray(activities) ? activities : [];
+
+              const nowTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+              container.innerHTML = `
+                <div class="admin-surface-card">
+                  <div class="admin-live-header" style="margin-bottom:1.2rem">
+                    <div>
+                      <span class="admin-live-badge">
+                        <span class="admin-live-dot"></span>
+                        Live Patron Activity Feed (${list.length} events)
+                      </span>
+                      <p style="margin:0.2rem 0 0;font-size:0.83rem;color:var(--admin-charcoal-muted)">
+                        Chronological audit log of customer registrations, views, bag additions, orders, cancellations, returns, and reviews.
+                      </p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.9rem">
+                      <span style="font-size:0.82rem;color:var(--admin-charcoal-muted)">Updated: ${nowTime}</span>
+                      <button class="btn ghost sm" id="activity-refresh-btn" style="padding:0.35rem 0.85rem;font-size:0.82rem">
+                        🔄 Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Filter Bar -->
+                  <div class="admin-filter-bar">
+                    <button class="admin-filter-chip ${currentFilter === '' ? 'active' : ''}" data-filter="">All Events</button>
+                    <button class="admin-filter-chip ${currentFilter === 'order_placed' ? 'active' : ''}" data-filter="order_placed">Orders Placed</button>
+                    <button class="admin-filter-chip ${currentFilter === 'register' ? 'active' : ''}" data-filter="register">Patron Registrations</button>
+                    <button class="admin-filter-chip ${currentFilter === 'cart_addition' ? 'active' : ''}" data-filter="cart_addition">Bag Additions</button>
+                    <button class="admin-filter-chip ${currentFilter === 'view' ? 'active' : ''}" data-filter="view">Garment Views</button>
+                    <button class="admin-filter-chip ${currentFilter === 'cancellation' ? 'active' : ''}" data-filter="cancellation">Cancellations</button>
+                    <button class="admin-filter-chip ${currentFilter === 'return_request' ? 'active' : ''}" data-filter="return_request">Return Requests</button>
+                    <button class="admin-filter-chip ${currentFilter === 'review_submission' ? 'active' : ''}" data-filter="review_submission">Patron Reviews</button>
+                  </div>
+
+                  ${list.length ? `
+                    <div class="admin-activity-stream">
+                      ${list.map(act => {
+                        const meta = getActivityMeta(act.activity_type);
+                        return `
+                          <div class="admin-activity-item">
+                            <div class="admin-activity-icon ${meta.cls}">${meta.icon}</div>
+                            <div class="admin-activity-body">
+                              <div class="admin-activity-desc">${esc(act.description)}</div>
+                              <div class="admin-activity-meta">
+                                <span class="admin-activity-actor">${esc(act.user_name || 'Guest Patron')}</span>
+                                <span>&bull;</span>
+                                <span class="admin-pill sage" style="font-size:0.68rem;padding:0.1rem 0.45rem">${meta.label}</span>
+                                <span>&bull;</span>
+                                <span>${timeAgo(act.created_at)}</span>
+                                <span class="muted" style="font-size:0.72rem">(${new Date(act.created_at).toLocaleString('en-IN')})</span>
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : `
+                    <p class="muted" style="padding:2rem 0;text-align:center">No activities found matching this filter.</p>
+                  `}
+                </div>
+              `;
+
+              // Event Delegate: Filter chips
+              $$('.admin-filter-chip').forEach(chip => {
+                chip.onclick = () => {
+                  window._activityFilter = chip.dataset.filter;
+                  renderTab('activity', true);
+                };
+              });
+
+              // Event Delegate: Manual Refresh
+              const actRefBtn = $('#activity-refresh-btn');
+              if (actRefBtn) {
+                actRefBtn.onclick = () => renderTab('activity', true);
+              }
+
+            } catch (err) {
+              container.innerHTML = `<p class="muted">Could not load activity feed: ${esc(err.message)}</p>`;
+            }
+          }
+
+          /* ==========================================================================
+             ADMIN TAB 2: All Patron Orders & Fulfillment
+             ========================================================================== */
+          else if (tabName === 'admin-orders') {
+            container.innerHTML = '<p class="muted">Loading all patron orders from database...</p>';
+            try {
+              const res = await fetchAuth('/api/admin/orders');
+              const orders = await res.json();
+              if (Array.isArray(orders) && orders.length) {
+                container.innerHTML = `
+                  <div class="admin-surface-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;gap:0.8rem">
+                      <div>
+                        <h2>All Patron Commissions &amp; Orders (${orders.length})</h2>
+                        <p class="muted">Real-time order statuses, fulfillment tracking, and courier dispatch management.</p>
+                      </div>
+                    </div>
+
+                    <div class="admin-table-wrap">
+                      <table class="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Order ID</th>
+                            <th>Patron</th>
+                            <th>Date</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Fulfillment Status</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${orders.map(o => `
+                            <tr>
+                              <td>
+                                <strong style="color:var(--admin-forest)">#${esc(o.id)}</strong>
+                                <div style="font-size:0.78rem;color:var(--admin-charcoal-muted)">${esc(o.tracking_number || 'TRK-SS-PENDING')}</div>
+                              </td>
+                              <td>
+                                <div><strong>${esc(o.customer_name || 'VIP Patron')}</strong></div>
+                                <div style="font-size:0.78rem;color:var(--admin-charcoal-muted)">${esc(o.customer_email || '')}</div>
+                              </td>
+                              <td>${new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                              <td><strong>${money(o.total)}</strong></td>
+                              <td>
+                                <span class="admin-pill sage">${(o.payment_method || 'COD').toUpperCase()}</span>
+                                <span class="admin-pill ${o.payment_status === 'paid' ? 'forest' : 'warn'}" style="margin-left:0.3rem">
+                                  ${(o.payment_status || 'Pending').toUpperCase()}
+                                </span>
+                                ${o.payment_status !== 'paid' ? `
+                                  <div style="margin-top:0.35rem">
+                                    <button class="btn ghost sm mark-paid-btn" data-order-id="${o.id}" style="font-size:0.74rem;padding:0.2rem 0.55rem">Mark Paid</button>
+                                  </div>
+                                ` : ''}
+                              </td>
+                              <td>
+                                <select class="order-status-select" data-order-id="${o.id}" style="width:auto;padding:0.35rem 0.6rem;font-size:0.85rem">
+                                  ${['Confirmed', 'In Atelier', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
+                                    <option value="${st}" ${st === o.status ? 'selected' : ''}>${st}</option>
+                                  `).join('')}
+                                </select>
+                              </td>
+                              <td>
+                                <button class="btn gold sm save-status-btn" data-order-id="${o.id}">Update</button>
+                              </td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                `;
+
+                $$('.save-status-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const oid = btn.dataset.orderId;
+                    const select = $(`.order-status-select[data-order-id="${oid}"]`);
+                    if (!select) return;
+                    const newStatus = select.value;
+                    try {
+                      const r = await fetchAuth(`/api/orders/${oid}/status`, {
+                        method: 'PUT',
+                        body: { status: newStatus }
+                      });
+                      const d = await r.json();
+                      if (!r.ok) throw new Error(d.error);
+                      toast(`Order #${oid} status updated to ${newStatus}.`);
+                      renderTab('admin-orders');
+                    } catch (e) {
+                      toast(e.message || 'Could not update order status.');
+                    }
+                  };
+                });
+
+                $$('.mark-paid-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const oid = btn.dataset.orderId;
+                    try {
+                      const r = await fetchAuth(`/api/orders/${oid}/payment`, {
+                        method: 'PUT',
+                        body: { paymentStatus: 'paid' }
+                      });
+                      const d = await r.json();
+                      if (!r.ok) throw new Error(d.error);
+                      toast(`Order #${oid} marked as Paid in PostgreSQL.`);
+                      renderTab('admin-orders');
+                    } catch (e) {
+                      toast(e.message || 'Could not update payment status.');
+                    }
+                  };
+                });
+              } else {
+                container.innerHTML = '<p class="muted">No orders found in database.</p>';
+              }
+            } catch (err) {
+              container.innerHTML = '<p class="muted">Could not retrieve patron orders.</p>';
+            }
+          }
+
+          /* ==========================================================================
+             TAB 3: Garment Management (CRUD & Product Catalog Table)
+             ========================================================================== */
+          else if (tabName === 'crud') {
+            container.innerHTML = '<p class="muted">Loading atelier catalog...</p>';
+            try {
+              const res = await fetch('/api/products');
+              const products = await res.json();
+              const productList = Array.isArray(products) ? products : [];
+
+              container.innerHTML = `
+                <!-- Garment Creation Form -->
+                <div class="account-card" style="margin-bottom:2rem">
+                  <h2 style="margin-bottom:0.4rem">Publish New Bespoke Garment</h2>
+                  <p class="muted" style="margin-bottom:1.5rem">Create new handcrafted additions directly into the PostgreSQL catalog.</p>
+                  
+                  <form id="admin-product-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+                    <div style="grid-column:1/-1">
+                      <label>Garment Name</label>
+                      <input name="name" required placeholder="e.g. Royal Organza Zari Saree">
+                    </div>
+                    <div>
+                      <label>Category</label>
+                      <select name="cat">
+                        <option value="ethnic">Ethnic Couture</option>
+                        <option value="western">Western Pret</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Silhouette / Type</label>
+                      <input name="type" required placeholder="e.g. Sarees, Suit sets, Blazers">
+                    </div>
+                    <div>
+                      <label>Collection</label>
+                      <select name="col">
+                        <option value="wedding">Wedding Edit</option>
+                        <option value="festive">Festive Wear</option>
+                        <option value="everyday">Everyday Cotton</option>
+                        <option value="work">Work Wardrobe</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Selling Price (INR)</label>
+                      <input name="price" type="number" required placeholder="6990">
+                    </div>
+                    <div>
+                      <label>Original Price / MRP (Optional)</label>
+                      <input name="old" type="number" placeholder="8490">
+                    </div>
+                    <div>
+                      <label>Available Atelier Stock</label>
+                      <input name="stock" type="number" value="8" required>
+                    </div>
+                    <div style="grid-column:1/-1">
+                      <label>Fabric &amp; Craft Details</label>
+                      <input name="fabric" placeholder="e.g. Pure Mulberry Silk with Antique Gold Zari Weave">
+                    </div>
+                    <div style="grid-column:1/-1">
+                      <label>Garment Description</label>
+                      <textarea name="desc" rows="3" placeholder="Artisanal description of the piece..."></textarea>
+                    </div>
+
+                    <!-- Image Upload Section -->
+                    <div style="grid-column:1/-1">
+                      <label>Product Photography Upload</label>
+                      <div class="upload-dropzone" id="img-dropzone">
+                        <p style="font-weight:500;color:var(--admin-charcoal)">Click or drag image file here to upload garment photography</p>
+                        <p style="font-size:0.8rem;color:var(--admin-charcoal-muted);margin-top:0.3rem">JPEG, PNG, WebP up to 5MB</p>
+                        <input type="file" id="image-file-input" accept="image/*" style="display:none">
+                        <input type="hidden" name="image" id="uploaded-img-url" value="images/p1.jpg">
+                      </div>
+                      <img id="img-preview" class="preview-thumb" src="images/p1.jpg" alt="Preview" style="border:1px solid var(--admin-border)">
+                    </div>
+
+                    <div style="grid-column:1/-1;margin-top:1rem">
+                      <button class="btn gold" type="submit">Publish to Atelier Catalog</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Atelier Catalog Table -->
+                <div class="admin-surface-card">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;gap:0.8rem">
+                    <div>
+                      <h2>Atelier Garment Inventory Table (${productList.length} Creations)</h2>
+                      <p class="muted">Live PostgreSQL catalog with instant stock adjustment and management.</p>
+                    </div>
+                  </div>
+
+                  <div class="admin-table-wrap">
+                    <table class="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Photo</th>
+                          <th>Garment Name</th>
+                          <th>Category &amp; Type</th>
+                          <th>Price</th>
+                          <th>Stock Level</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${productList.map(p => `
+                          <tr>
+                            <td>
+                              <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:40px;height:52px;object-fit:cover;border-radius:4px;border:1px solid var(--admin-border)">
+                            </td>
+                            <td>
+                              <strong>${esc(p.name)}</strong>
+                              <div style="font-size:0.78rem;color:var(--admin-charcoal-muted)">${esc(p.fabric || 'Luxury weave')}</div>
+                            </td>
+                            <td>
+                              <span class="admin-pill sage">${p.cat === 'ethnic' ? 'Ethnic' : 'Western'}</span>
+                              <span style="font-size:0.82rem;color:var(--admin-charcoal-muted);margin-left:0.3rem">${esc(p.type || '')}</span>
+                            </td>
+                            <td>
+                              <strong>${money(p.price)}</strong>
+                              ${p.old ? `<span style="font-size:0.78rem;color:var(--admin-charcoal-muted);text-decoration:line-through;margin-left:0.3rem">${money(p.old)}</span>` : ''}
+                            </td>
+                            <td>
+                              <div class="admin-stock-control">
+                                <button class="admin-stock-btn dec-stock-btn" data-pid="${p.id}" data-current="${p.stock}">-</button>
+                                <span class="admin-stock-num">${p.stock}</span>
+                                <button class="admin-stock-btn inc-stock-btn" data-pid="${p.id}" data-current="${p.stock}">+</button>
+                              </div>
+                            </td>
+                            <td>
+                              <button class="link delete-product-btn" data-pid="${p.id}" style="color:#b91c1c;font-size:0.85rem;background:none;border:none;cursor:pointer">Remove</button>
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `;
+
+              // Setup upload handler
+              const dropzone = $('#img-dropzone');
+              const fileInput = $('#image-file-input');
+              const preview = $('#img-preview');
+              const imgUrlInput = $('#uploaded-img-url');
+
+              if (dropzone && fileInput) {
+                dropzone.onclick = () => fileInput.click();
+                fileInput.onchange = async () => {
+                  if (!fileInput.files.length) return;
+                  const file = fileInput.files[0];
+                  const formData = new FormData();
+                  formData.append('image', file);
+
+                  try {
+                    toast('Uploading garment photography...');
+                    const res = await fetchAuth('/api/upload', {
+                      method: 'POST',
+                      body: formData
+                    });
+                    const d = await res.json();
+                    if (!res.ok) throw new Error(d.error);
+                    imgUrlInput.value = d.url;
+                    preview.src = d.url;
+                    toast('Image uploaded successfully.');
+                  } catch (err) {
+                    toast(err.message || 'Image upload failed.');
+                  }
+                };
+              }
+
+              // Create product submit
+              $('#admin-product-form').onsubmit = async e => {
+                e.preventDefault();
+                const d = Object.fromEntries(new FormData(e.target));
+                try {
+                  const res = await fetchAuth('/api/products', {
+                    method: 'POST',
+                    body: d
+                  });
+                  const newP = await res.json();
+                  if (!res.ok) throw new Error(newP.error);
+                  PRODUCTS.push(newP);
+                  toast(`New creation "${newP.name}" published to catalog!`);
+                  renderTab('crud');
+                } catch (err) {
+                  toast(err.message || 'Could not create product.');
+                }
+              };
+
+              // Quick Stock buttons
+              $$('.inc-stock-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  const pid = btn.dataset.pid;
+                  const newStock = Number(btn.dataset.current) + 1;
+                  try {
+                    await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                    renderTab('crud');
+                  } catch (err) { toast('Could not adjust stock'); }
+                };
+              });
+
+              $$('.dec-stock-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  const pid = btn.dataset.pid;
+                  const newStock = Math.max(0, Number(btn.dataset.current) - 1);
+                  try {
+                    await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                    renderTab('crud');
+                  } catch (err) { toast('Could not adjust stock'); }
+                };
+              });
+
+              // Delete product handler
+              $$('.delete-product-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  if (!confirm('Are you sure you want to remove this garment from catalog?')) return;
+                  const pid = btn.dataset.pid;
+                  try {
+                    const r = await fetchAuth(`/api/products/${pid}`, { method: 'DELETE' });
+                    if (!r.ok) throw new Error((await r.json()).error);
+                    toast('Garment removed from catalog.');
+                    PRODUCTS = PRODUCTS.filter(p => Number(p.id) !== Number(pid));
+                    renderTab('crud');
+                  } catch (err) {
+                    toast(err.message || 'Could not delete product.');
+                  }
+                };
+              });
+
+            } catch (err) {
+              container.innerHTML = '<p class="muted">Could not load catalog.</p>';
+            }
+          }
+
+          /* ==========================================================================
+             ADMIN TAB 4: Promotional Coupons Management
+             ========================================================================== */
+          else if (tabName === 'coupons') {
+            container.innerHTML = '<p class="muted">Loading promotional privileges...</p>';
+            try {
+              const res = await fetchAuth('/api/admin/coupons');
+              const coupons = await res.json();
+              const couponList = Array.isArray(coupons) ? coupons : [];
+
+              container.innerHTML = `
+                <!-- New Coupon Form -->
+                <div class="admin-surface-card" style="margin-bottom:2rem">
+                  <h2>Create Promotional Discount Privilege</h2>
+                  <p class="muted" style="margin-bottom:1.4rem">Issue bespoke atelier promo discount codes for patrons.</p>
+                  
+                  <form id="create-coupon-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+                    <div>
+                      <label>Coupon Code (e.g. LUXURY25)</label>
+                      <input name="code" required placeholder="ATELIER20" style="text-transform:uppercase">
+                    </div>
+                    <div>
+                      <label>Discount Percentage (%)</label>
+                      <input name="discountPercent" type="number" min="1" max="90" required placeholder="20">
+                    </div>
+                    <div>
+                      <label>Minimum Order Threshold (INR)</label>
+                      <input name="minOrderAmount" type="number" value="0" placeholder="5000">
+                    </div>
+                    <div>
+                      <label>Description / Privilege Note</label>
+                      <input name="description" placeholder="20% off bridal collections" required>
+                    </div>
+                    <div style="grid-column:1/-1;margin-top:0.4rem">
+                      <button class="btn gold" type="submit">Issue Promo Privilege</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Coupons Table -->
+                <div class="admin-surface-card">
+                  <h2>Active Promotional Privileges (${couponList.length})</h2>
+                  <div class="admin-table-wrap">
+                    <table class="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Promo Code</th>
+                          <th>Discount</th>
+                          <th>Min Spend</th>
+                          <th>Privilege Details</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${couponList.map(c => `
+                          <tr>
+                            <td><strong style="color:var(--admin-forest)">${esc(c.code)}</strong></td>
+                            <td><strong>${c.discountPercent}% OFF</strong></td>
+                            <td>${c.minOrderAmount > 0 ? money(c.minOrderAmount) : 'None'}</td>
+                            <td>${esc(c.description || 'Promotional coupon')}</td>
+                            <td>
+                              <span class="admin-pill ${c.isActive ? 'forest' : 'warn'}">${c.isActive ? 'Active' : 'Disabled'}</span>
+                            </td>
+                            <td>
+                              <button class="link delete-coupon-btn" data-cid="${c.id}" style="color:#b91c1c;font-size:0.85rem;background:none;border:none;cursor:pointer">Delete</button>
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `;
+
+              $('#create-coupon-form').onsubmit = async e => {
+                e.preventDefault();
+                const d = Object.fromEntries(new FormData(e.target));
+                d.code = d.code.toUpperCase().trim();
+                try {
+                  const r = await fetchAuth('/api/admin/coupons', { method: 'POST', body: d });
+                  const data = await r.json();
+                  if (!r.ok) throw new Error(data.error);
+                  toast(`Coupon "${d.code}" successfully registered.`);
+                  renderTab('coupons');
+                } catch (err) {
+                  toast(err.message || 'Could not create coupon.');
+                }
+              };
+
+              $$('.delete-coupon-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  if (!confirm('Are you sure you want to delete this promotional coupon?')) return;
+                  try {
+                    const r = await fetchAuth(`/api/admin/coupons/${btn.dataset.cid}`, { method: 'DELETE' });
+                    if (!r.ok) throw new Error((await r.json()).error);
+                    toast('Coupon deleted.');
+                    renderTab('coupons');
+                  } catch (err) {
+                    toast(err.message || 'Could not delete coupon.');
+                  }
+                };
+              });
+
+            } catch (err) {
+              container.innerHTML = '<p class="muted">Could not load promotional privileges.</p>';
+            }
+          }
+
+          /* ==========================================================================
+             ADMIN TAB 5: Patrons & Staff Roles Directory
+             ========================================================================== */
+          else if (tabName === 'users') {
+            container.innerHTML = '<p class="muted">Loading patron & staff directory...</p>';
+            try {
+              const res = await fetchAuth('/api/admin/users');
+              const users = await res.json();
+              const userList = Array.isArray(users) ? users : [];
+
+              container.innerHTML = `
+                <div class="admin-surface-card">
+                  <h2>Registered Patrons &amp; Staff Directory (${userList.length} Members)</h2>
+                  <p class="muted" style="margin-bottom:1.4rem">Role-based access control and accounts registered in PostgreSQL.</p>
+
+                  <div class="admin-table-wrap">
+                    <table class="admin-table">
+                      <thead>
+                        <tr>
+                          <th>User ID</th>
+                          <th>Patron Name</th>
+                          <th>Email Address</th>
+                          <th>Phone</th>
+                          <th>Access Role</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${userList.map(u => `
+                          <tr>
+                            <td>#${u.id}</td>
+                            <td><strong>${esc(u.name)}</strong></td>
+                            <td>${esc(u.email)}</td>
+                            <td>${esc(u.phone || '—')}</td>
+                            <td>
+                              <select class="user-role-select" data-uid="${u.id}" style="width:auto;padding:0.35rem 0.6rem;font-size:0.85rem">
+                                <option value="customer" ${u.role === 'customer' ? 'selected' : ''}>Customer (Patron)</option>
+                                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin (Atelier Master)</option>
+                              </select>
+                            </td>
+                            <td>
+                              <button class="btn gold sm update-role-btn" data-uid="${u.id}">Apply Role</button>
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `;
+
+              $$('.update-role-btn').forEach(btn => {
+                btn.onclick = async () => {
+                  const uid = btn.dataset.uid;
+                  const sel = $(`.user-role-select[data-uid="${uid}"]`);
+                  if (!sel) return;
+                  const newRole = sel.value;
+                  try {
+                    const r = await fetchAuth(`/api/admin/users/${uid}/role`, {
+                      method: 'PUT',
+                      body: { role: newRole }
+                    });
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.error);
+                    toast(`User #${uid} role updated to ${newRole}.`);
+                    renderTab('users');
+                  } catch (err) {
+                    toast(err.message || 'Could not update role.');
+                  }
+                };
+              });
+
+            } catch (err) {
+              container.innerHTML = '<p class="muted">Could not load users directory.</p>';
+            }
+          }
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Orders & Tracking
+             ========================================================================== */
+          else if (tabName === 'orders') {
             container.innerHTML = '<p class="muted">Loading orders from atelier database...</p>';
             try {
               const res = await fetchAuth('/api/user/orders');
@@ -1663,7 +2881,9 @@
             }
           }
 
-          /* --- TAB 2: Saved Addresses --- */
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Saved Addresses
+             ========================================================================== */
           else if (tabName === 'addresses') {
             container.innerHTML = '<p class="muted">Loading addresses from atelier database...</p>';
             try {
@@ -1745,7 +2965,9 @@
             }
           }
 
-          /* --- TAB 3: Curated Wishlist --- */
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Curated Wishlist
+             ========================================================================== */
           else if (tabName === 'wishlist') {
             container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
             try {
@@ -1779,7 +3001,9 @@
             }
           }
 
-          /* --- TAB 4: Profile Details --- */
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Profile Details
+             ========================================================================== */
           else if (tabName === 'profile') {
             container.innerHTML = `
               <div class="account-card" style="max-width:540px">
@@ -1799,7 +3023,7 @@
                   </div>
                   <div>
                     <label style="font-size:0.85rem;font-weight:600">Account Tier</label>
-                    <p style="color:var(--gold-dark);font-weight:600">${user.role === 'admin' ? 'Atelier Master & Administrator' : 'VIP Patron Concierge'}</p>
+                    <p style="color:${user.role === 'admin' ? 'var(--admin-forest)' : 'var(--gold-dark)'};font-weight:600">${user.role === 'admin' ? 'Atelier Master & Administrator' : 'VIP Patron Concierge'}</p>
                   </div>
                   <button class="btn gold" type="submit" style="margin-top:0.5rem">Update Profile</button>
                 </form>
@@ -1825,138 +3049,15 @@
               }
             };
           }
-
-          /* --- TAB 5: Atelier Management (CRUD & Uploads) --- */
-          else if (tabName === 'crud') {
-            container.innerHTML = `
-              <div class="account-card">
-                <h2 style="margin-bottom:1.2rem">Atelier Garment Management (Product CRUD &amp; Uploads)</h2>
-                <p class="muted" style="margin-bottom:1.5rem">Create new handcrafted additions or update existing inventory directly into the PostgreSQL catalog.</p>
-                
-                <form id="admin-product-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
-                  <div style="grid-column:1/-1">
-                    <label style="font-size:0.85rem;font-weight:600">Garment Name</label>
-                    <input name="name" required placeholder="e.g. Royal Organza Zari Saree">
-                  </div>
-                  <div>
-                    <label style="font-size:0.85rem;font-weight:600">Category</label>
-                    <select name="cat">
-                      <option value="ethnic">Ethnic Couture</option>
-                      <option value="western">Western Pret</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style="font-size:0.85rem;font-weight:600">Silhouette / Type</label>
-                    <input name="type" required placeholder="e.g. Sarees, Suit sets, Blazers">
-                  </div>
-                  <div>
-                    <label style="font-size:0.85rem;font-weight:600">Collection</label>
-                    <select name="col">
-                      <option value="wedding">Wedding Edit</option>
-                      <option value="festive">Festive Wear</option>
-                      <option value="everyday">Everyday Cotton</option>
-                      <option value="work">Work Wardrobe</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style="font-size:0.85rem;font-weight:600">Selling Price (INR)</label>
-                    <input name="price" type="number" required placeholder="6990">
-                  </div>
-                  <div>
-                    <label style="font-size:0.85rem;font-weight:600">Original Price / MRP (Optional)</label>
-                    <input name="old" type="number" placeholder="8490">
-                  </div>
-                  <div>
-                    <label style="font-size:0.85rem;font-weight:600">Available Atelier Stock</label>
-                    <input name="stock" type="number" value="8" required>
-                  </div>
-                  <div style="grid-column:1/-1">
-                    <label style="font-size:0.85rem;font-weight:600">Fabric &amp; Craft Details</label>
-                    <input name="fabric" placeholder="e.g. Pure Mulberry Silk with Antique Gold Zari Weave">
-                  </div>
-                  <div style="grid-column:1/-1">
-                    <label style="font-size:0.85rem;font-weight:600">Garment Description</label>
-                    <textarea name="desc" rows="3" placeholder="Artisanal description of the piece..."></textarea>
-                  </div>
-
-                  <!-- Image Upload Section -->
-                  <div style="grid-column:1/-1">
-                    <label style="font-size:0.85rem;font-weight:600">Product Photography Upload</label>
-                    <div class="upload-dropzone" id="img-dropzone">
-                      <p>Click or drag image file here to upload garment photography</p>
-                      <input type="file" id="image-file-input" accept="image/*" style="display:none">
-                      <input type="hidden" name="image" id="uploaded-img-url" value="images/p1.jpg">
-                    </div>
-                    <img id="img-preview" class="preview-thumb" src="images/p1.jpg" alt="Preview">
-                  </div>
-
-                  <div style="grid-column:1/-1;margin-top:1rem">
-                    <button class="btn gold" type="submit">Publish to Atelier Catalog</button>
-                  </div>
-                </form>
-              </div>
-            `;
-
-            // Setup upload handler
-            const dropzone = $('#img-dropzone');
-            const fileInput = $('#image-file-input');
-            const preview = $('#img-preview');
-            const imgUrlInput = $('#uploaded-img-url');
-
-            if (dropzone && fileInput) {
-              dropzone.onclick = () => fileInput.click();
-              fileInput.onchange = async () => {
-                if (!fileInput.files.length) return;
-                const file = fileInput.files[0];
-                const formData = new FormData();
-                formData.append('image', file);
-
-                try {
-                  toast('Uploading garment photography...');
-                  const res = await fetchAuth('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                  });
-                  const d = await res.json();
-                  if (!res.ok) throw new Error(d.error);
-                  imgUrlInput.value = d.url;
-                  preview.src = d.url;
-                  toast('Image uploaded successfully.');
-                } catch (err) {
-                  toast(err.message || 'Image upload failed.');
-                }
-              };
-            }
-
-            // Create product submit
-            $('#admin-product-form').onsubmit = async e => {
-              e.preventDefault();
-              const d = Object.fromEntries(new FormData(e.target));
-              try {
-                const res = await fetchAuth('/api/products', {
-                  method: 'POST',
-                  body: d
-                });
-                const newP = await res.json();
-                if (!res.ok) throw new Error(newP.error);
-                PRODUCTS.push(newP);
-                toast(`New creation "${newP.name}" added to catalog!`);
-                e.target.reset();
-              } catch (err) {
-                toast(err.message || 'Could not create product.');
-              }
-            };
-          }
         };
 
         $$('.account-tab-btn').forEach(b => {
           b.onclick = () => renderTab(b.dataset.tab);
         });
 
-        renderTab('orders');
+        renderTab(isAdmin ? 'overview' : 'orders');
         return;
       }
-
       // Guest / Unauthenticated: Tabbed Sign In / Register
       root.className = 'narrow';
       const renderAuth = (mode = 'in') => {
@@ -2013,6 +3114,69 @@
       renderAuth();
     },
 
+    /* ---------- Dedicated Atelier Admin Dashboard ---------- */
+    async admin() {
+      const user = db.get('user', null);
+      const token = db.token();
+      if (!user || !token || user.role !== 'admin') {
+        const root = $('#auth');
+        if (!root) return;
+        document.body.classList.add('admin-dashboard-theme');
+        const siteHeader = $('#site-header');
+        if (siteHeader) {
+          siteHeader.innerHTML = '';
+          siteHeader.style.display = 'none';
+        }
+        root.className = 'narrow';
+        root.innerHTML = `
+          <div class="wrap" style="max-width:440px;margin:3.5rem auto;background:var(--admin-sage);padding:2.5rem;border-radius:var(--radius);border:1px solid var(--admin-border);box-shadow:0 4px 16px rgba(55,59,56,0.1);color:var(--admin-charcoal)">
+            <div style="text-align:center;margin-bottom:1.5rem">
+              <span class="admin-role-badge">Atelier Management Portal</span>
+              <h2 style="font-family:var(--serif);margin-top:0.4rem;color:var(--admin-charcoal)">Admin Sign In</h2>
+              <p class="muted" style="font-size:0.88rem;color:var(--admin-charcoal-muted)">Restricted access for Atelier administrators and curators.</p>
+            </div>
+            <form id="admin-direct-login-form" style="display:grid;gap:1.2rem">
+              <div>
+                <label style="font-weight:600;font-size:0.85rem">Admin Email</label>
+                <input name="email" type="email" value="admin@satinostitch.com" required>
+              </div>
+              <div>
+                <label style="font-weight:600;font-size:0.85rem">Password</label>
+                <input name="password" type="password" value="admin123" required>
+              </div>
+              <button class="btn gold block" type="submit" style="background-color:var(--admin-forest)!important;color:#fff!important;border-color:var(--admin-forest)!important">Sign In as Atelier Admin</button>
+              <div style="text-align:center;margin-top:0.6rem">
+                <a href="index.html" style="font-size:0.84rem;color:var(--admin-forest);text-decoration:none;font-weight:500">&larr; Return to SATINOSTITCH Store</a>
+              </div>
+            </form>
+          </div>`;
+
+        $('#admin-direct-login-form').onsubmit = async (e) => {
+          e.preventDefault();
+          const d = Object.fromEntries(new FormData(e.target));
+          try {
+            const res = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(d)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            if (data.user.role !== 'admin') throw new Error('Account does not possess administrator privileges.');
+            db.setToken(data.token);
+            db.set('user', data.user);
+            toast('Welcome, Atelier Master!');
+            mountChrome();
+            pages.admin();
+          } catch (err) {
+            toast(err.message || 'Authentication error.');
+          }
+        };
+        return;
+      }
+      pages.login();
+    },
+
     /* ---------- Module 5: Concierge Inquiries ---------- */
     contact() {
       const f = $('#contact-form');
@@ -2067,7 +3231,7 @@
   mountChrome();
   checkSystemHealth();
   const page = document.body.dataset.page;
-  const needsData = ['home', 'collections', 'shop', 'product', 'wishlist', 'cart', 'checkout', 'login'].includes(page);
+  const needsData = ['home', 'collections', 'shop', 'product', 'wishlist', 'cart', 'checkout', 'login', 'admin'].includes(page);
 
   // Clean up legacy global ss_wish
   localStorage.removeItem('ss_wish');
