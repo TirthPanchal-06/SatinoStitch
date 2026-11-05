@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600&family=Marcellus&display=swap" rel="stylesheet">
 <link rel="icon" type="image/png" href="images/emblem.png">
 <link rel="stylesheet" href="css/style.css">
+<!-- Razorpay Checkout Integration -->
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 <body data-page="checkout">
 <div id="site-header"></div>
@@ -22,10 +24,34 @@
     <div class="field"><label for="o-p">Phone</label><input id="o-p" name="phone" type="tel" pattern="[0-9]{10}" title="10-digit mobile number" required autocomplete="tel"></div>
     <div class="field"><label for="o-pin">PIN code</label><input id="o-pin" name="pin" pattern="[0-9]{6}" title="6-digit PIN code" required autocomplete="postal-code"></div>
     <div class="field full"><label for="o-a">Address</label><input id="o-a" name="address" required autocomplete="street-address"></div>
-    <div class="field full"><label for="o-c">City</label><input id="o-c" name="city" required autocomplete="address-level2"></div>
-    <h2>Payment</h2>
-    <div class="pay full"><label><input type="radio" name="payment" value="upi" checked> UPI</label><label><input type="radio" name="payment" value="card"> Card</label><label><input type="radio" name="payment" value="cod"> Cash on delivery</label></div>
-    <button class="btn full">Place order</button>
+    <div class="field"><label for="o-c">City</label><input id="o-c" name="city" required autocomplete="address-level2"></div>
+    <div class="field"><label for="o-s">State</label><input id="o-s" name="state" placeholder="e.g. Gujarat" autocomplete="address-level1"></div>
+    <h2>Payment Method</h2>
+    <div class="pay full" id="payment-options-group">
+      <label class="pay-option active" data-pay="upi">
+        <input type="radio" name="payment" value="upi" checked> 
+        <span class="pay-label-content">
+          <span class="pay-label-title">UPI / QR Code</span>
+          <span class="pay-label-sub">Scan &amp; pay via any UPI app</span>
+        </span>
+      </label>
+      <label class="pay-option" data-pay="card">
+        <input type="radio" name="payment" value="card"> 
+        <span class="pay-label-content">
+          <span class="pay-label-title">Card (Razorpay)</span>
+          <span class="pay-label-sub">Credit &amp; Debit Cards</span>
+        </span>
+      </label>
+      <label class="pay-option" data-pay="cod">
+        <input type="radio" name="payment" value="cod"> 
+        <span class="pay-label-content">
+          <span class="pay-label-title">Cash on Delivery</span>
+          <span class="pay-label-sub">Pay upon doorstep receipt</span>
+        </span>
+      </label>
+    </div>
+    <div id="payment-guide-box" class="field full payment-guide"></div>
+    <button type="submit" id="place-order-btn" class="btn full">Place order</button>
   </form>
   <aside class="box"><h2>Order summary</h2><div id="order-summary"></div></aside>
 </div>
