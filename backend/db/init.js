@@ -265,7 +265,7 @@ async function initializeDatabase() {
           5841.00,
           'card',
           'paid',
-          'In Atelier',
+          'In Workshop',
           'TRK-SS-' + Math.floor(100000 + Math.random() * 900000)
         ]
       );
@@ -338,7 +338,7 @@ async function initializeDatabase() {
         {
           user_name: 'Meera Kapoor',
           activity_type: 'cancellation',
-          description: 'Order #SS8595660 cancelled: Found alternative color in atelier. Inventory restocked.',
+          description: 'Order #SS8595660 cancelled: Found alternative color In Workshop. Inventory restocked.',
           created_at: '2026-11-02 14:09:56+05:30'
         },
         {

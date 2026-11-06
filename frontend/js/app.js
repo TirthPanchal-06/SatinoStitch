@@ -48,7 +48,7 @@
           activeWishlist = stored.map(Number);
           return activeWishlist;
         }
-      } catch {}
+      } catch { }
       activeWishlist = [];
       return activeWishlist;
     },
@@ -74,6 +74,8 @@
       localStorage.removeItem('ss_token');
       localStorage.removeItem('ss_user');
       localStorage.removeItem('ss_wish');
+      localStorage.removeItem('ss_cart');
+      localStorage.removeItem('ss_promo');
       activeWishlist = [];
       updateCounts();
       updateWishlistUI();
@@ -168,9 +170,9 @@
     const activeCur = getCurrency();
 
     // Site Header (Excluded from Admin Panel)
-    const isAdminMode = document.body.dataset.page === 'admin' || 
-                        document.body.classList.contains('admin-dashboard-theme') || 
-                        (user && user.role === 'admin' && (file === 'admin.html' || file === 'login.html'));
+    const isAdminMode = document.body.dataset.page === 'admin' ||
+      document.body.classList.contains('admin-dashboard-theme') ||
+      (user && user.role === 'admin' && (file === 'admin.html' || file === 'login.html'));
     const headerEl = $('#site-header');
     if (headerEl) {
       if (isAdminMode) {
@@ -249,7 +251,7 @@
               <a href="shop.html?cat=ethnic">Ethnic Sarees &amp; Sets</a>
               <a href="shop.html?cat=western">Western Blazers &amp; Dresses</a>
               <a href="collections.html">Curated Collections</a>
-              <a href="shop.html?col=wedding">Bridal Trousseau</a>
+              <a href="shop.html?col=wedding">BridalCollection</a>
             </div>
             <div>
               <h3>Patron Care</h3>
@@ -363,7 +365,11 @@
     `;
     t.classList.add('show');
     clearTimeout(t.timer);
-    t.timer = setTimeout(() => t.classList.remove('show'), 3800);
+    // t.timer = setTimeout(() => t.classList.remove('show'), 3500);
+    t.timer = setTimeout(() => {
+      console.log("Toast timer executed");
+      t.classList.remove('show');
+    }, 3500);
   }
   window.toast = toast;
 
@@ -381,20 +387,20 @@
       fetchAuth('/api/cart', {
         method: 'POST',
         body: { productId: id, size, color: selectedColor, quantity: qty }
-      }).catch(() => {});
+      }).catch(() => { });
     } else {
       fetch('/api/activity/cart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId: id, size, color: selectedColor, quantity: qty })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }
 
   function toggleWish(id) {
     const u = db.user();
     if (!u || !db.token()) {
-      toast('Please sign in to save creations to your personal trousseau wishlist.', 'login.html', 'Sign In');
+      toast('Please sign in to save creations to your personalCollection wishlist.', 'login.html', 'Sign In');
       return null;
     }
     const numId = Number(id);
@@ -523,7 +529,7 @@
         'Content-Type': 'application/json',
         ...(db.token() ? { 'Authorization': `Bearer ${db.token()}` } : {})
       }
-    }).catch(() => {});
+    }).catch(() => { });
 
     const modal = $('#quick-view-modal');
     if (!modal) return;
@@ -745,7 +751,7 @@
       // 2. Style & occasion concierge matcher
       const matcherGrid = $('#matcher-grid');
       const matcherChips = $$('#matcher-options .matcher-chip');
-      
+
       const renderMatcher = (mood) => {
         matcherChips.forEach(c => c.classList.toggle('active', c.dataset.mood === mood));
         let matches = PRODUCTS.filter(p => p.col === mood);
@@ -868,7 +874,7 @@
         } catch (err) {
           console.warn('[SATINOSTITCH] API fetch fallback to cache:', err.message);
           const term = f.q.trim().toLowerCase();
-          let list = PRODUCTS.filter(p => 
+          let list = PRODUCTS.filter(p =>
             (f.cat === 'all' || p.cat === f.cat) &&
             (f.type === 'all' || p.type === f.type) &&
             (f.col === 'all' || p.col === f.col) &&
@@ -934,7 +940,7 @@
           if (idx >= 0) PRODUCTS[idx] = p;
           else PRODUCTS.push(p);
         }
-      } catch {}
+      } catch { }
 
       if (!p) {
         root.innerHTML = '<div class="empty wrap" style="text-align:center;padding:5rem 1rem"><h2>Creation Not Found</h2><p class="muted" style="margin:1rem 0 2rem">The requested piece is no longer available in our active catalogue.</p><a class="btn" href="shop.html">Return to Shop</a></div>';
@@ -980,7 +986,7 @@
               <span class="muted">(${p.reviews || 64} Verified Patron Reviews)</span>
               <span>·</span>
               <span style="color:${(p.stock || 0) > 0 ? 'var(--success)' : '#dc2626'};font-weight:600">
-                ${(p.stock || 0) > 0 ? `In Stock & Ready for Tailored Dispatch` : 'Sold Out in Atelier'}
+                ${(p.stock || 0) > 0 ? `In Stock & Ready for Tailored Dispatch` : 'Sold Out In Workshop'}
               </span>
             </div>
 
@@ -991,9 +997,9 @@
             </div>
 
             <div class="pdp-urgency-badge">
-              ${(p.stock || 0) <= 3 && (p.stock || 0) > 0 
-                ? `Limited Edition: Only ${p.stock} units remaining in atelier` 
-                : `Authentic Handcrafted Creation: ${p.stock || 8} units available`}
+              ${(p.stock || 0) <= 3 && (p.stock || 0) > 0
+          ? `Limited Edition: Only ${p.stock} units remaining In Workshop`
+          : `Authentic Handcrafted Creation: ${p.stock || 8} units available`}
             </div>
 
             <p style="font-size:1.05rem;line-height:1.7;color:var(--esp-light);margin-bottom:1.8rem">${esc(p.desc)}</p>
@@ -1244,7 +1250,7 @@
         root.innerHTML = `
           <div class="empty" style="grid-column:1/-1;text-align:center;padding:5rem 1rem">
             <span class="hero-pill" style="margin-bottom:1rem">Atelier Authentication Required</span>
-            <h2 style="margin:1rem 0 0.5rem">Your Curated Trousseau</h2>
+            <h2 style="margin:1rem 0 0.5rem">Your CuratedCollection</h2>
             <p class="muted" style="margin:0.5rem 0 2rem;max-width:500px;margin-inline:auto">
               Please sign in to your patron account to view your private wishlist and saved haute couture creations.
             </p>
@@ -1253,7 +1259,7 @@
         return;
       }
 
-      root.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:4rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
+      root.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:4rem 1rem"><p class="muted">Loading your curatedCollection...</p></div>';
 
       try {
         const res = await fetchAuth('/api/user/wishlist');
@@ -1268,7 +1274,7 @@
         root.innerHTML = items.length ? items.map(card).join('') : `
           <div class="empty" style="grid-column:1/-1;text-align:center;padding:5rem 1rem">
             <h2>Your Wishlist is Empty</h2>
-            <p class="muted" style="margin:1rem 0 2rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
+            <p class="muted" style="margin:1rem 0 2rem">Curate your dreamCollection by tapping the heart icon on any piece.</p>
             <a class="btn gold" href="shop.html">Explore The Catalogue</a>
           </div>`;
       } catch (err) {
@@ -1345,7 +1351,7 @@
         c[i].qty = Math.min(Math.max(c[i].qty + d, 1), 9);
         db.set('cart', c);
         if (db.token()) {
-          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => {});
+          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => { });
         }
         pages.cart();
       });
@@ -1354,7 +1360,7 @@
         const c = db.get('cart', []).filter((_, i) => i !== +b.dataset.rm);
         db.set('cart', c);
         if (db.token()) {
-          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => {});
+          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => { });
         }
         pages.cart();
       });
@@ -1405,7 +1411,7 @@
         try {
           const res = await fetchAuth('/api/user/addresses');
           if (res.ok) savedAddresses = await res.json();
-        } catch {}
+        } catch { }
       }
 
       // Pre-fill user details if logged in
@@ -1500,7 +1506,7 @@
                     <span>Order Total:</span> <strong>${money(data.total)}</strong>
                   </div>
                   <div style="display:flex;justify-content:space-between">
-                    <span>Dispatch Status:</span> <span class="order-badge in-atelier">In Atelier Handcrafting</span>
+                    <span>Dispatch Status:</span> <span class="order-badge in-workshop">In Workshop Handcrafting</span>
                   </div>
                 </div>
                 <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
@@ -1690,7 +1696,7 @@
 
               // Status pipeline calculations
               const statusCounts = summary.statusCounts || {
-                'Confirmed': 0, 'In Atelier': 0, 'Dispatched': 0, 'Delivered': 0, 'Cancelled': 0
+                'Confirmed': 0, 'In Workshop': 0, 'Dispatched': 0, 'Delivered': 0, 'Cancelled': 0
               };
               const maxOrderCount = Math.max(...Object.values(statusCounts), 1);
 
@@ -1770,9 +1776,9 @@
 
                   <div class="admin-sales-chart-wrap">
                     ${graphData.length ? graphData.map(d => {
-                      const rev = Number(d.revenue) || 0;
-                      const pct = Math.min(100, Math.max(6, Math.round((rev / maxRev) * 100)));
-                      return `
+                const rev = Number(d.revenue) || 0;
+                const pct = Math.min(100, Math.max(6, Math.round((rev / maxRev) * 100)));
+                return `
                         <div class="admin-sales-col" title="${esc(d.label || d.key)}: ${money(rev)} (${d.orders || 0} orders)">
                           <div class="admin-sales-val">${rev > 0 ? money(rev) : '₹0'}</div>
                           <div class="admin-sales-bar-container">
@@ -1782,7 +1788,7 @@
                           <div class="admin-sales-count">${d.orders || 0} orders</div>
                         </div>
                       `;
-                    }).join('') : '<p class="muted" style="padding:2rem">No sales data recorded in this period.</p>'}
+              }).join('') : '<p class="muted" style="padding:2rem">No sales data recorded in this period.</p>'}
                   </div>
                 </div>
 
@@ -1861,10 +1867,10 @@
                     <p>Comparison of customer units commissioned across active silhouettes</p>
                     <div class="admin-chart-bars">
                       ${demandCat.map(c => {
-                        const units = Number(c.total_units_sold) || 0;
-                        const views = Number(c.total_views) || 0;
-                        const pct = Math.round((units / maxDemandSold) * 100);
-                        return `
+                const units = Number(c.total_units_sold) || 0;
+                const views = Number(c.total_views) || 0;
+                const pct = Math.round((units / maxDemandSold) * 100);
+                return `
                           <div class="admin-bar-row">
                             <span class="admin-bar-label">${esc(c.label)}</span>
                             <div class="admin-bar-track">
@@ -1873,7 +1879,7 @@
                             <span class="admin-bar-val">${units} sold (${views} views)</span>
                           </div>
                         `;
-                      }).join('')}
+              }).join('')}
                     </div>
                   </div>
 
@@ -1882,8 +1888,8 @@
                     <p>Current volume distribution across order lifecycle</p>
                     <div class="admin-chart-bars">
                       ${Object.entries(statusCounts).map(([status, cnt]) => {
-                        const pct = Math.round((cnt / maxOrderCount) * 100);
-                        return `
+                const pct = Math.round((cnt / maxOrderCount) * 100);
+                return `
                           <div class="admin-bar-row">
                             <span class="admin-bar-label">${status}</span>
                             <div class="admin-bar-track">
@@ -1892,7 +1898,7 @@
                             <span class="admin-bar-val">${cnt} orders</span>
                           </div>
                         `;
-                      }).join('')}
+              }).join('')}
                     </div>
                   </div>
                 </div>
@@ -1902,7 +1908,7 @@
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.8rem">
                     <div>
                       <h3 style="margin-bottom:0.2rem">Atelier Restock Priority</h3>
-                      <p class="muted" style="font-size:0.86rem">Garments with 5 or fewer units remaining in atelier inventory</p>
+                      <p class="muted" style="font-size:0.86rem">Garments with 5 or fewer units remaining In Workshop inventory</p>
                     </div>
                     ${lowStockItems.length ? `<span class="admin-pill warn">${lowStockItems.length} Urgent Restocks</span>` : ''}
                   </div>
@@ -1994,7 +2000,7 @@
                               </td>
                               <td>
                                 <select class="overview-order-status-select" data-order-id="${o.id}" style="width:auto;padding:0.3rem 0.5rem;font-size:0.84rem">
-                                  ${['Confirmed', 'In Atelier', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
+                                  ${['Confirmed', 'In Workshop', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
                                     <option value="${st}" ${st === o.status ? 'selected' : ''}>${st}</option>
                                   `).join('')}
                                 </select>
@@ -2023,8 +2029,8 @@
                   ${recentActivities.length ? `
                     <div class="admin-activity-stream">
                       ${recentActivities.slice(0, 8).map(act => {
-                        const meta = getActivityMeta(act.activity_type);
-                        return `
+                const meta = getActivityMeta(act.activity_type);
+                return `
                           <div class="admin-activity-item">
                             <div class="admin-activity-icon ${meta.cls}">${meta.icon}</div>
                             <div class="admin-activity-body">
@@ -2039,7 +2045,7 @@
                             </div>
                           </div>
                         `;
-                      }).join('')}
+              }).join('')}
                     </div>
                   ` : '<p class="muted" style="padding:1rem 0">No customer activity recorded yet.</p>'}
                 </div>
@@ -2167,8 +2173,8 @@
                   ${list.length ? `
                     <div class="admin-activity-stream">
                       ${list.map(act => {
-                        const meta = getActivityMeta(act.activity_type);
-                        return `
+                const meta = getActivityMeta(act.activity_type);
+                return `
                           <div class="admin-activity-item">
                             <div class="admin-activity-icon ${meta.cls}">${meta.icon}</div>
                             <div class="admin-activity-body">
@@ -2184,7 +2190,7 @@
                             </div>
                           </div>
                         `;
-                      }).join('')}
+              }).join('')}
                     </div>
                   ` : `
                     <p class="muted" style="padding:2rem 0;text-align:center">No activities found matching this filter.</p>
@@ -2268,7 +2274,7 @@
                               </td>
                               <td>
                                 <select class="order-status-select" data-order-id="${o.id}" style="width:auto;padding:0.35rem 0.6rem;font-size:0.85rem">
-                                  ${['Confirmed', 'In Atelier', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
+                                  ${['Confirmed', 'In Workshop', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
                                     <option value="${st}" ${st === o.status ? 'selected' : ''}>${st}</option>
                                   `).join('')}
                                 </select>
@@ -2760,9 +2766,9 @@
                 container.innerHTML = orders.map(o => {
                   const items = Array.isArray(o.items) ? o.items : [];
                   const statusClass = (o.status || 'confirmed').toLowerCase().replace(/\s+/g, '-');
-                  
+
                   // Tracking Steps Logic
-                  const steps = ['Confirmed', 'In Atelier', 'Dispatched', 'Out for Delivery', 'Delivered'];
+                  const steps = ['Confirmed', 'In Workshop', 'Dispatched', 'Out for Delivery', 'Delivered'];
                   const currentIdx = steps.indexOf(o.status);
 
                   return `
@@ -2782,15 +2788,15 @@
                       ${o.status !== 'Cancelled' ? `
                         <div class="tracking-stepper">
                           ${steps.map((s, idx) => {
-                            const isDone = currentIdx >= idx;
-                            const isCurrent = currentIdx === idx;
-                            return `
+                    const isDone = currentIdx >= idx;
+                    const isCurrent = currentIdx === idx;
+                    return `
                               <div class="tracking-step ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''}">
                                 <div class="tracking-dot">${isDone ? '✓' : idx + 1}</div>
                                 <div class="tracking-label">${s}</div>
                               </div>
                             `;
-                          }).join('')}
+                  }).join('')}
                         </div>
                       ` : `
                         <div style="background:#fee2e2;color:#991b1b;padding:0.8rem 1rem;border-radius:var(--radius-sm);margin:1rem 0;font-size:0.9rem">
@@ -2816,7 +2822,7 @@
                           Tracking: <strong>${o.tracking_number || 'TRK-SS-PENDING'}</strong> · Payment: <strong>${(o.payment_method || 'COD').toUpperCase()}</strong> (${o.payment_status})
                         </span>
                         <div style="display:flex;gap:0.6rem">
-                          ${['Confirmed', 'In Atelier'].includes(o.status) ? `
+                          ${['Confirmed', 'In Workshop'].includes(o.status) ? `
                             <button class="btn ghost sm cancel-order-btn" data-order-id="${o.id}" style="color:#b91c1c;border-color:#fca5a5">Cancel Order</button>
                           ` : ''}
                           ${o.status === 'Delivered' ? `
@@ -2969,7 +2975,7 @@
              CUSTOMER / PERSONAL TAB: Curated Wishlist
              ========================================================================== */
           else if (tabName === 'wishlist') {
-            container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
+            container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curatedCollection...</p></div>';
             try {
               const res = await fetchAuth('/api/user/wishlist');
               let items = [];
@@ -2983,7 +2989,7 @@
               if (items.length) {
                 container.innerHTML = `
                   <div style="margin-bottom:1.5rem">
-                    <h2>Saved Trousseau Pieces (${items.length})</h2>
+                    <h2>SavedCollection Pieces (${items.length})</h2>
                   </div>
                   <div class="grid">${items.map(card).join('')}</div>
                 `;
@@ -2991,7 +2997,7 @@
                 container.innerHTML = `
                   <div class="empty" style="text-align:center;padding:4rem 1rem">
                     <h3>Your Wishlist is Empty</h3>
-                    <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
+                    <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dreamCollection by tapping the heart icon on any piece.</p>
                     <a class="btn gold" href="shop.html">Explore The Catalogue</a>
                   </div>
                 `;
@@ -3100,7 +3106,7 @@
             await syncUserWishlist();
             const localCart = db.get('cart', []);
             if (localCart.length) {
-              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
+              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => { });
             }
             toast(`Welcome, ${data.user.name}!`);
             mountChrome();

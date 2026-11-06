@@ -1033,7 +1033,7 @@ async function getAdminAnalytics() {
   `);
   const statusCounts = {
     'Confirmed': 0,
-    'In Atelier': 0,
+    'In Workshop': 0,
     'Dispatched': 0,
     'Delivered': 0,
     'Cancelled': 0,

@@ -1699,7 +1699,7 @@ footer a:hover {
 /* ==========================================================================
    Toast Notification & Keyframes
    ========================================================================== */
-.toast {
+/* .toast {
   position: fixed;
   bottom: 2rem;
   right: 2rem;
@@ -1714,6 +1714,42 @@ footer a:hover {
   align-items: center;
   gap: 1rem;
   animation: toastIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.toast a {
+  color: var(--gold-light);
+  font-weight: 600;
+  text-decoration: underline;
+} */
+
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 200;
+  background: var(--esp);
+  color: var(--ivory);
+  padding: 1rem 1.6rem;
+  border-left: 4px solid var(--gold);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(15px);
+  pointer-events: none;
+  transition: opacity 0.3s ease,
+              transform 0.3s ease,
+              visibility 0.3s ease;
+}
+
+.toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .toast a {

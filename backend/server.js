@@ -746,7 +746,7 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
       const qty = Math.max(1, parseInt(item.qty, 10) || 1);
       if (p.stock < qty) {
         return res.status(400).json({
-          error: `Insufficient stock for "${p.name}". Only ${p.stock} piece(s) available in atelier.`
+          error: `Insufficient stock for "${p.name}". Only ${p.stock} piece(s) available In Workshop.`
         });
       }
 
@@ -950,7 +950,7 @@ app.post('/api/orders/:id/cancel', optionalAuth, async (req, res) => {
     const order = await db.getOrderById(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found.' });
 
-    if (order.status !== 'Confirmed' && order.status !== 'In Atelier') {
+    if (order.status !== 'Confirmed' && order.status !== 'In Workshop') {
       return res.status(400).json({
         error: `Order cannot be cancelled in status "${order.status}". Dispatched orders may be returned after delivery.`
       });
