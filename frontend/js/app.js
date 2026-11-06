@@ -33,14 +33,79 @@
   const db = {
     get: (k, d) => { try { return JSON.parse(localStorage.getItem('ss_' + k)) ?? d; } catch { return d; } },
     set: (k, v) => { localStorage.setItem('ss_' + k, JSON.stringify(v)); updateCounts(); },
-    token: () => localStorage.getItem('ss_token') || '',
-    setToken: (t) => localStorage.setItem('ss_token', t),
-    user: () => { try { return JSON.parse(localStorage.getItem('ss_user')); } catch { return null; } },
 
-    // User-scoped Wishlist methods (only the signed-in user who saved items can see them)
+    // Customer Session (Strictly role === 'customer')
+    customerToken: () => localStorage.getItem('ss_customer_token') || '',
+    setCustomerToken: (t) => {
+      if (t) {
+        localStorage.setItem('ss_customer_token', t);
+      } else {
+        localStorage.removeItem('ss_customer_token');
+        localStorage.removeItem('ss_token');
+      }
+    },
+    customerUser: () => {
+      try {
+        const u = JSON.parse(localStorage.getItem('ss_customer_user'));
+        return (u && u.role === 'customer') ? u : null;
+      } catch { return null; }
+    },
+    setCustomerUser: (u) => {
+      if (u && u.role === 'customer') {
+        localStorage.setItem('ss_customer_user', JSON.stringify(u));
+      } else {
+        localStorage.removeItem('ss_customer_user');
+        localStorage.removeItem('ss_user');
+      }
+      updateCounts();
+    },
+    clearCustomerAuth: () => {
+      localStorage.removeItem('ss_customer_token');
+      localStorage.removeItem('ss_customer_user');
+      localStorage.removeItem('ss_token');
+      localStorage.removeItem('ss_user');
+      localStorage.removeItem('ss_wish');
+      activeWishlist = [];
+      updateCounts();
+      updateWishlistUI();
+    },
+
+    // Admin Session (Strictly role === 'admin', completely independent from customer)
+    adminToken: () => localStorage.getItem('ss_admin_token') || '',
+    setAdminToken: (t) => {
+      if (t) {
+        localStorage.setItem('ss_admin_token', t);
+      } else {
+        localStorage.removeItem('ss_admin_token');
+      }
+    },
+    adminUser: () => {
+      try {
+        const u = JSON.parse(localStorage.getItem('ss_admin_user'));
+        return (u && u.role === 'admin') ? u : null;
+      } catch { return null; }
+    },
+    setAdminUser: (u) => {
+      if (u && u.role === 'admin') {
+        localStorage.setItem('ss_admin_user', JSON.stringify(u));
+      } else {
+        localStorage.removeItem('ss_admin_user');
+      }
+    },
+    clearAdminAuth: () => {
+      localStorage.removeItem('ss_admin_token');
+      localStorage.removeItem('ss_admin_user');
+    },
+
+    // Backwards-compatible legacy helpers
+    token: () => db.customerToken(),
+    setToken: (t) => db.setCustomerToken(t),
+    user: () => db.customerUser(),
+
+    // User-scoped Wishlist methods (tied to signed-in customer)
     getWishlist: () => {
-      const u = db.user();
-      if (!u || !db.token()) return [];
+      const u = db.customerUser();
+      if (!u || !db.customerToken()) return [];
       if (activeWishlist !== null) return activeWishlist;
       try {
         const stored = JSON.parse(localStorage.getItem(`ss_wish_${u.id}`));
@@ -53,8 +118,8 @@
       return activeWishlist;
     },
     setWishlist: (ids) => {
-      const u = db.user();
-      if (!u || !db.token()) {
+      const u = db.customerUser();
+      if (!u || !db.customerToken()) {
         activeWishlist = [];
         return;
       }
@@ -74,8 +139,6 @@
       localStorage.removeItem('ss_token');
       localStorage.removeItem('ss_user');
       localStorage.removeItem('ss_wish');
-      localStorage.removeItem('ss_cart');
-      localStorage.removeItem('ss_promo');
       activeWishlist = [];
       updateCounts();
       updateWishlistUI();
@@ -83,8 +146,8 @@
   };
 
   async function syncUserWishlist() {
-    const u = db.user();
-    if (!u || !db.token()) {
+    const u = db.customerUser();
+    if (!u || !db.customerToken()) {
       activeWishlist = [];
       updateCounts();
       updateWishlistUI();
@@ -94,7 +157,7 @@
       const res = await fetchAuth('/api/user/wishlist');
       if (res.ok) {
         const list = await res.json();
-        const ids = Array.isArray(list) ? list.map(p => Number(p.id)) : [];
+        const ids = Array.isArray(list) ? list.map(item => Number(item.product?.id || item.id || item.productId)) : [];
         db.setWishlist(ids);
         updateWishlistUI();
         return ids;
@@ -133,7 +196,10 @@
 
   async function fetchAuth(url, opts = {}) {
     opts.headers = opts.headers || {};
-    const token = db.token();
+    // Route tokens based on endpoint destination:
+    // Admin APIs strictly use the Admin token; customer APIs strictly use Customer token.
+    const isAdmin = url.startsWith('/api/admin');
+    const token = isAdmin ? db.adminToken() : db.customerToken();
     if (token) {
       opts.headers['Authorization'] = `Bearer ${token}`;
     }
@@ -166,13 +232,14 @@
   function mountChrome() {
     const file = location.pathname.split('/').pop() || 'index.html';
     const current = file === 'product.html' ? 'shop.html' : file;
-    const user = db.get('user', null);
+    const customer = db.customerUser();
+    const admin = db.adminUser();
     const activeCur = getCurrency();
 
     // Site Header (Excluded from Admin Panel)
-    const isAdminMode = document.body.dataset.page === 'admin' ||
-      document.body.classList.contains('admin-dashboard-theme') ||
-      (user && user.role === 'admin' && (file === 'admin.html' || file === 'login.html'));
+    const isAdminMode = document.body.dataset.page === 'admin' || 
+                        document.body.classList.contains('admin-dashboard-theme') || 
+                        (user && user.role === 'admin' && (file === 'admin.html' || file === 'login.html'));
     const headerEl = $('#site-header');
     if (headerEl) {
       if (isAdminMode) {
@@ -193,7 +260,10 @@
               <select class="currency-select" id="cur-select" aria-label="Select Currency">
                 ${Object.entries(CURRENCIES).map(([k, v]) => `<option value="${k}" ${k === activeCur ? 'selected' : ''}>${v.label}</option>`).join('')}
               </select>
-              <span>${user ? `<a href="${user.role === 'admin' ? 'admin.html' : 'login.html'}" style="color:var(--gold-light);font-weight:500">${user.role === 'admin' ? 'Admin Dashboard' : `My Account (${esc(user.name.split(' ')[0])})`}</a>` : `<a href="login.html" style="color:var(--gold-light)">Sign In</a>`}</span>
+              <span>
+                ${customer ? `<a href="login.html" style="color:var(--gold-light);font-weight:500">My Account (${esc(customer.name.split(' ')[0])})</a>` : `<a href="login.html" style="color:var(--gold-light)">Sign In</a>`}
+                ${admin ? `<a href="admin.html" style="color:var(--gold);font-weight:600;margin-left:0.8rem;background:rgba(198,161,91,0.18);padding:0.2rem 0.55rem;border-radius:4px;border:1px solid rgba(198,161,91,0.3)" title="Open Atelier Management">Atelier Admin &rarr;</a>` : ''}
+              </span>
             </div>
           </div>
         </div>
@@ -231,10 +301,15 @@
       }
     }
 
-    // Site Footer
+    // Site Footer (Excluded from Admin Panel)
     const footerEl = $('#site-footer');
     if (footerEl) {
-      footerEl.innerHTML = `
+      if (isAdminMode) {
+        footerEl.innerHTML = '';
+        footerEl.style.display = 'none';
+      } else {
+        footerEl.style.display = '';
+        footerEl.innerHTML = `
         <footer>
           <div class="wrap foot-grid">
             <div class="foot-logo-brand">
@@ -277,6 +352,7 @@
             <span>Handcrafted with precision · Banarasi Silk · Pure Mulberry · Fine Suiting</span>
           </div>
         </footer>`;
+      }
     }
 
     // Currency Switcher Event
@@ -1082,7 +1158,7 @@
                   </div>
                   <div>
                     <label style="font-size:0.85rem;font-weight:600">Your Name</label>
-                    <input id="rev-name" placeholder="Meera Kapoor" value="${db.get('user', {})?.name || ''}">
+                    <input id="rev-name" placeholder="Meera Kapoor" value="${db.customerUser()?.name || ''}">
                   </div>
                   <div>
                     <label style="font-size:0.85rem;font-weight:600">Review Headline</label>
@@ -1403,22 +1479,22 @@
         $('#order-summary').innerHTML = summary(ls, totals(ls));
       }
 
-      const user = db.get('user', null);
+      const customer = db.customerUser();
       let savedAddresses = [];
 
-      // If user is logged in, try loading saved addresses
-      if (user && db.token()) {
+      // If customer is logged in, try loading saved addresses
+      if (customer && db.customerToken()) {
         try {
           const res = await fetchAuth('/api/user/addresses');
           if (res.ok) savedAddresses = await res.json();
         } catch { }
       }
 
-      // Pre-fill user details if logged in
-      if (user) {
-        if ($('#o-n')) $('#o-n').value = user.name || '';
-        if ($('#o-e')) $('#o-e').value = user.email || '';
-        if ($('#o-p')) $('#o-p').value = user.phone || '';
+      // Pre-fill customer details if logged in
+      if (customer) {
+        if ($('#o-n')) $('#o-n').value = customer.name || '';
+        if ($('#o-e')) $('#o-e').value = customer.email || '';
+        if ($('#o-p')) $('#o-p').value = customer.phone || '';
       }
 
       // Render saved address selector if available
@@ -1450,41 +1526,145 @@
             if ($('#o-p')) $('#o-p').value = a.phone;
             if ($('#o-a')) $('#o-a').value = a.address_line1 + (a.address_line2 ? ', ' + a.address_line2 : '');
             if ($('#o-c')) $('#o-c').value = a.city;
+            if ($('#o-s')) $('#o-s').value = a.state || '';
             if ($('#o-pin')) $('#o-pin').value = a.pincode;
             toast(`Selected saved address: ${a.label}`);
           };
         });
       }
 
-      const orderForm = $('#order-form');
-      if (orderForm) {
-        orderForm.onsubmit = async e => {
-          e.preventDefault();
-          const customer = Object.fromEntries(new FormData(e.target));
-          const paymentMethod = customer.payment || 'cod';
+      // Fetch payment gateway configuration
+      let paymentConfig = {
+        razorpayKeyId: 'rzp_test_51ABCD1234EFGH',
+        upiVpa: 'satinostitch@upi',
+        merchantName: 'SATINOSTITCH'
+      };
+      try {
+        const cfgRes = await fetch('/api/payment/config');
+        if (cfgRes.ok) paymentConfig = await cfgRes.json();
+      } catch {}
 
-          try {
-            const res = await fetchAuth('/api/orders', {
-              method: 'POST',
-              body: {
-                customer,
-                items: db.get('cart', []),
-                promo: db.get('promo', ''),
-                paymentMethod,
-                shippingAddress: {
-                  recipient: customer.name,
-                  line1: customer.address,
-                  city: customer.city,
-                  pincode: customer.pin,
-                  phone: customer.phone
-                }
+      // Update payment guide & dynamic button text
+      const t = totals(ls);
+      const updatePaymentUI = () => {
+        const selectedRadio = $('input[name="payment"]:checked');
+        const method = selectedRadio ? selectedRadio.value : 'upi';
+
+        $$('#payment-options-group .pay-option').forEach(el => {
+          const isCurrent = el.dataset.pay === method;
+          el.classList.toggle('active', isCurrent);
+        });
+
+        const guideBox = $('#payment-guide-box');
+        const submitBtn = $('#place-order-btn');
+
+        if (method === 'upi') {
+          if (guideBox) {
+            guideBox.innerHTML = `
+              <div class="payment-guide-header">
+                <span class="payment-guide-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                  Instant UPI QR Code Payment
+                </span>
+                <span class="payment-badge-pill forest">Instant Verification</span>
+              </div>
+              <p class="payment-guide-desc">
+                A personalized UPI QR code for <strong>${money(t.total)}</strong> will be generated upon checkout. Scan and pay using Google Pay, PhonePe, Paytm, or BHIM.
+              </p>
+              <div class="payment-badges-row">
+                <span class="payment-badge-pill">Google Pay</span>
+                <span class="payment-badge-pill">PhonePe</span>
+                <span class="payment-badge-pill">Paytm</span>
+                <span class="payment-badge-pill">BHIM UPI</span>
+                <span class="payment-badge-pill gold">Zero Surcharge</span>
+              </div>
+            `;
+          }
+          if (submitBtn) submitBtn.innerHTML = `Generate UPI QR &amp; Pay &bull; ${money(t.total)}`;
+        } else if (method === 'card') {
+          if (guideBox) {
+            guideBox.innerHTML = `
+              <div class="payment-guide-header">
+                <span class="payment-guide-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                  Cards Powered by Razorpay
+                </span>
+                <span class="payment-badge-pill gold">256-Bit SSL Secured</span>
+              </div>
+              <p class="payment-guide-desc">
+                Instant card payment handled through <strong>Razorpay</strong>. All major Credit &amp; Debit cards (Visa, MasterCard, RuPay, Maestro) are supported.
+              </p>
+              <div class="payment-badges-row">
+                <span class="payment-badge-pill">Visa</span>
+                <span class="payment-badge-pill">MasterCard</span>
+                <span class="payment-badge-pill">RuPay</span>
+                <span class="payment-badge-pill forest">Razorpay Verified</span>
+              </div>
+            `;
+          }
+          if (submitBtn) submitBtn.innerHTML = `Pay with Razorpay &bull; ${money(t.total)}`;
+        } else {
+          if (guideBox) {
+            guideBox.innerHTML = `
+              <div class="payment-guide-header">
+                <span class="payment-guide-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                  Cash on Delivery (Standard)
+                </span>
+                <span class="payment-badge-pill">Doorstep Delivery</span>
+              </div>
+              <p class="payment-guide-desc" style="margin-bottom:0">
+                No online advance payment required. Inspect your bespoke couture parcel upon arrival and hand over cash directly to the courier executive.
+              </p>
+            `;
+          }
+          if (submitBtn) submitBtn.innerHTML = `Place Order (Cash on Delivery) &bull; ${money(t.total)}`;
+        }
+      };
+
+      $$('input[name="payment"]').forEach(r => r.addEventListener('change', updatePaymentUI));
+      updatePaymentUI();
+
+      // Core Order Finalization helper
+      async function completeOrderPlacement(customer, paymentMethod, paymentStatus, paymentId) {
+        const submitBtn = $('#place-order-btn');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Commissioning Bespoke Order...';
+        }
+
+        try {
+          const res = await fetchAuth('/api/orders', {
+            method: 'POST',
+            body: {
+              customer,
+              items: db.get('cart', []),
+              promo: db.get('promo', ''),
+              couponCode: db.get('promo', ''),
+              paymentMethod,
+              paymentStatus,
+              paymentId: paymentId || null,
+              shippingAddress: {
+                recipient: customer.name,
+                line1: customer.address,
+                city: customer.city,
+                state: customer.state || 'Gujarat',
+                pincode: customer.pin,
+                phone: customer.phone
               }
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            }
+          });
 
-            db.set('cart', []);
-            db.set('promo', '');
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+
+          db.set('cart', []);
+          db.set('promo', '');
+
+          const orderInfo = data.order || data;
+          const orderId = orderInfo.id || data.id;
+          const trackingNumber = orderInfo.trackingNumber || data.trackingNumber || 'TRK-SS-PENDING';
+          const orderTotal = orderInfo.total || data.total || t.total;
 
             checkoutEl.innerHTML = `
               <div class="wrap" style="max-width:620px;margin:4rem auto;text-align:center;background:#fff;padding:3.5rem;border-radius:var(--radius-lg);border:1px solid var(--line);box-shadow:var(--shadow-md)">
@@ -1506,7 +1686,7 @@
                     <span>Order Total:</span> <strong>${money(data.total)}</strong>
                   </div>
                   <div style="display:flex;justify-content:space-between">
-                    <span>Dispatch Status:</span> <span class="order-badge in-workshop">In Workshop Handcrafting</span>
+                    <span>Dispatch Status:</span> <span class="order-badge in-atelier">In Atelier Handcrafting</span>
                   </div>
                 </div>
                 <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
@@ -1546,64 +1726,768 @@
               <div style="display:flex;align-items:center;gap:1.2rem">
                 <img src="images/emblem.png" alt="SATINOSTITCH" style="height:44px;width:auto;border-radius:4px">
                 <div>
-                  <span class="admin-role-badge">Atelier Master &bull; Administrator</span>
-                  <h1 style="font-family:var(--serif);font-size:2rem;margin:0.2rem 0;color:var(--admin-charcoal)">SATINOSTITCH Atelier Portal</h1>
-                  <p class="admin-subtext">${esc(user.name)} &bull; ${esc(user.email)} &bull; Status: Active Curator</p>
+                  <h3 style="margin:0;font-size:1.25rem;font-family:var(--serif);color:var(--wine)">Credit / Debit Card</h3>
+                  <p style="margin:0.15rem 0 0;font-size:0.8rem;color:var(--esp-light)">Secured by Razorpay Encryption</p>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;gap:0.75rem">
-                <a href="index.html" class="btn ghost sm" style="color:var(--admin-charcoal);border-color:var(--admin-border);text-decoration:none">View Storefront</a>
-                <button class="btn ghost sm" id="signout-btn" style="color:var(--admin-charcoal);border-color:var(--admin-border)">Sign Out</button>
+              <button type="button" class="modal-close-icon" id="close-rzp-modal" title="Cancel">&times;</button>
+            </div>
+
+            <div class="payment-modal-body">
+              <div class="upi-amount-hero" style="margin-bottom:1.2rem">
+                <small>Order Payable Total</small>
+                <strong>${money(t.total)}</strong>
+              </div>
+
+              <div style="display:grid;gap:0.9rem">
+                <div>
+                  <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.3rem">Card Number</label>
+                  <input type="text" id="rzp-card-num" placeholder="4532 &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; 8892" maxlength="19" style="width:100%;padding:0.7rem;border:1px solid var(--line);border-radius:var(--radius-sm);font-family:monospace" value="4532 8901 2345 6789">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem">
+                  <div>
+                    <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.3rem">Expiry</label>
+                    <input type="text" id="rzp-card-exp" placeholder="MM / YY" maxlength="5" style="width:100%;padding:0.7rem;border:1px solid var(--line);border-radius:var(--radius-sm)" value="12/28">
+                  </div>
+                  <div>
+                    <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.3rem">CVV</label>
+                    <input type="password" id="rzp-card-cvv" placeholder="&bull;&bull;&bull;" maxlength="4" style="width:100%;padding:0.7rem;border:1px solid var(--line);border-radius:var(--radius-sm)" value="888">
+                  </div>
+                </div>
+                <div>
+                  <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.3rem">Cardholder Name</label>
+                  <input type="text" id="rzp-card-name" style="width:100%;padding:0.7rem;border:1px solid var(--line);border-radius:var(--radius-sm)" value="${esc(customer.name)}">
+                </div>
+              </div>
+
+              <div class="payment-badges-row" style="margin-top:1.2rem;justify-content:center">
+                <span class="payment-badge-pill">Visa</span>
+                <span class="payment-badge-pill">Mastercard</span>
+                <span class="payment-badge-pill">RuPay</span>
+                <span class="payment-badge-pill gold">Razorpay</span>
               </div>
             </div>
 
-            <div class="account-nav">
-              <button class="account-tab-btn active" data-tab="overview">Atelier Overview &amp; Analytics</button>
-              <button class="account-tab-btn" data-tab="admin-orders">All Orders &amp; Fulfillment</button>
-              <button class="account-tab-btn" data-tab="activity">Customer Activity Feed</button>
-              <button class="account-tab-btn" data-tab="crud">Garment Management (CRUD)</button>
-              <button class="account-tab-btn" data-tab="coupons">Promotional Coupons</button>
-              <button class="account-tab-btn" data-tab="users">Patrons &amp; Staff Roles</button>
-              <button class="account-tab-btn" data-tab="orders">My Personal Orders</button>
-              <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
-              <button class="account-tab-btn" data-tab="profile">Profile Details</button>
+            <div class="payment-modal-footer">
+              <button type="button" class="btn full gold" id="confirm-rzp-btn" style="font-size:1rem;padding:0.85rem">
+                Pay ${money(t.total)} via Razorpay
+              </button>
+              <button type="button" class="btn full ghost sm" id="cancel-rzp-btn" style="margin-top:0.5rem">
+                Cancel &amp; Select Different Method
+              </button>
             </div>
+          </div>
+        `;
 
-            <div id="account-tab-content">Loading bespoke atelier data...</div>
-          `;
-        } else {
-          root.className = 'account-wrapper';
-          document.body.classList.remove('admin-dashboard-theme');
-          root.innerHTML = `
-            <div class="account-header">
-              <div>
-                <span class="hero-pill" style="margin-bottom:0.4rem;display:inline-block">VIP Patron</span>
-                <h1 style="font-size:2.2rem">${esc(user.name)}</h1>
-                <p class="muted">${esc(user.email)} · Phone: ${esc(user.phone || 'Not registered')}</p>
+        document.body.appendChild(modalDiv);
+
+        const closeModal = () => modalDiv.remove();
+        modalDiv.querySelector('#close-rzp-modal').onclick = closeModal;
+        modalDiv.querySelector('#cancel-rzp-btn').onclick = closeModal;
+
+        const confirmBtn = modalDiv.querySelector('#confirm-rzp-btn');
+        confirmBtn.onclick = async () => {
+          confirmBtn.disabled = true;
+          confirmBtn.innerHTML = 'Authorizing via Razorpay...';
+          const simPayId = 'pay_rzp_' + Math.random().toString(36).substring(2, 11);
+          closeModal();
+          toast('Razorpay card payment approved!');
+          await completeOrderPlacement(customer, 'card', 'paid', simPayId);
+        };
+      }
+
+      // Checkout form submit dispatcher
+      const orderForm = $('#order-form');
+      if (orderForm) {
+        orderForm.onsubmit = async e => {
+          e.preventDefault();
+          if (!orderForm.checkValidity()) {
+            orderForm.reportValidity();
+            return;
+          }
+
+          const customer = Object.fromEntries(new FormData(orderForm));
+          const paymentMethod = customer.payment || 'cod';
+
+          // Flow routing as requested:
+          // 1. UPI: Generate dynamic QR code modal
+          // 2. Card: Razorpay checkout flow
+          // 3. Cash on delivery: "do nothing" (direct order placement without extra prompts)
+          if (paymentMethod === 'upi') {
+            showUpiQrModal(customer);
+          } else if (paymentMethod === 'card') {
+            launchRazorpayCardFlow(customer);
+          } else {
+            // Cash on delivery: do nothing extra, place directly
+            await completeOrderPlacement(customer, 'cod', 'pending', null);
+          }
+        };
+      }
+    },
+
+    /* ---------- Module 5: Customer Account & Authentication ---------- */
+    async login() {
+      const root = $('#auth');
+      if (!root) return;
+
+      // Ensure standard customer storefront view
+      document.body.classList.remove('admin-dashboard-theme');
+      const siteHeader = $('#site-header');
+      if (siteHeader) siteHeader.style.display = '';
+
+      const customer = db.customerUser();
+      const token = db.customerToken();
+
+      // If customer is authenticated, render Patron Dashboard
+      if (customer && token) {
+        root.className = 'account-wrapper';
+        root.innerHTML = `
+          <div class="account-header">
+            <div>
+              <span class="hero-pill" style="margin-bottom:0.4rem;display:inline-block">VIP Patron</span>
+              <h1 style="font-size:2.2rem">${esc(customer.name)}</h1>
+              <p class="muted">${esc(customer.email)} · Phone: ${esc(customer.phone || 'Not registered')}</p>
+            </div>
+            <button class="btn ghost sm" id="customer-signout-btn" style="color:#b91c1c;border-color:#fca5a5">Sign Out</button>
+          </div>
+
+          <div class="account-nav">
+            <button class="account-tab-btn active" data-tab="orders">My Orders &amp; Tracking</button>
+            <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
+            <button class="account-tab-btn" data-tab="wishlist">Curated Wishlist</button>
+            <button class="account-tab-btn" data-tab="profile">Profile Details</button>
+          </div>
+
+          <div id="account-tab-content">Loading your bespoke details...</div>
+        `;
+
+        $('#customer-signout-btn').onclick = () => {
+          db.clearCustomerAuth();
+          toast('You have successfully signed out.');
+          mountChrome();
+          pages.login();
+        };
+
+        const renderTab = async (tabName) => {
+          $$('.account-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+          const container = $('#account-tab-content');
+          if (!container) return;
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Orders & Tracking
+             ========================================================================== */
+          if (tabName === 'orders') {
+            container.innerHTML = '<p class="muted">Loading orders from atelier database...</p>';
+            try {
+              const res = await fetchAuth('/api/user/orders');
+              const orders = await res.json();
+              if (orders && orders.length) {
+                container.innerHTML = orders.map(o => {
+                  const items = Array.isArray(o.items) ? o.items : [];
+                  const statusClass = (o.status || 'confirmed').toLowerCase().replace(/\s+/g, '-');
+                  
+                  // Tracking Steps Logic
+                  const steps = ['Confirmed', 'In Atelier', 'Dispatched', 'Out for Delivery', 'Delivered'];
+                  const currentIdx = steps.indexOf(o.status);
+
+                  return `
+                    <div class="account-card">
+                      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:1.2rem;flex-wrap:wrap;gap:0.8rem">
+                        <div>
+                          <strong style="font-size:1.15rem;color:var(--wine)">Order #${o.id}</strong>
+                          <span class="muted" style="margin-left:0.6rem;font-size:0.85rem">Placed on ${new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:0.8rem">
+                          <span class="order-badge ${statusClass}">${o.status}</span>
+                          <strong style="color:var(--wine);font-size:1.1rem">${money(o.total)}</strong>
+                        </div>
+                      </div>
+
+                      <!-- Visual Tracking Stepper -->
+                      ${o.status !== 'Cancelled' ? `
+                        <div class="tracking-stepper">
+                          ${steps.map((s, idx) => {
+                            const isDone = currentIdx >= idx;
+                            const isCurrent = currentIdx === idx;
+                            return `
+                              <div class="tracking-step ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''}">
+                                <div class="tracking-dot">${isDone ? '✓' : idx + 1}</div>
+                                <div class="tracking-label">${s}</div>
+                              </div>
+                            `;
+                          }).join('')}
+                        </div>
+                      ` : `
+                        <div style="background:#fee2e2;color:#991b1b;padding:0.8rem 1rem;border-radius:var(--radius-sm);margin:1rem 0;font-size:0.9rem">
+                          Order Cancelled: ${esc(o.cancel_reason || 'Cancelled by request')}
+                        </div>
+                      `}
+
+                      <div style="display:grid;gap:0.8rem;margin:1.4rem 0">
+                        ${items.map(it => `
+                          <div style="display:flex;align-items:center;gap:1rem;background:var(--ivory-soft);padding:0.8rem;border-radius:var(--radius-sm)">
+                            <img src="${it.image || 'images/p1.jpg'}" alt="${esc(it.name)}" style="width:50px;height:65px;object-fit:cover;border-radius:4px">
+                            <div style="flex:1">
+                              <strong>${esc(it.name)}</strong>
+                              <p class="muted" style="font-size:0.85rem">Size: ${it.size} · Shade: ${esc(it.color || 'Standard')} · Qty: ${it.quantity}</p>
+                            </div>
+                            <strong>${money(it.total || (it.price * it.quantity))}</strong>
+                          </div>
+                        `).join('')}
+                      </div>
+
+                      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:1rem;flex-wrap:wrap;gap:0.8rem">
+                        <span class="muted" style="font-size:0.85rem">
+                          Tracking: <strong>${o.tracking_number || 'TRK-SS-PENDING'}</strong> · Payment: <strong>${(o.payment_method || 'COD').toUpperCase()}</strong> (${o.payment_status})
+                        </span>
+                        <div style="display:flex;gap:0.6rem">
+                          ${['Confirmed', 'In Atelier'].includes(o.status) ? `
+                            <button class="btn ghost sm cancel-order-btn" data-order-id="${o.id}" style="color:#b91c1c;border-color:#fca5a5">Cancel Order</button>
+                          ` : ''}
+                          ${o.status === 'Delivered' ? `
+                            <button class="btn ghost sm return-order-btn" data-order-id="${o.id}" style="color:var(--wine)">Request Return</button>
+                          ` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('');
+
+                // Cancel Order Event Delegate
+                $$('.cancel-order-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const reason = prompt('Please specify reason for cancellation:', 'Changed my styling plans');
+                    if (!reason) return;
+                    try {
+                      const res = await fetchAuth(`/api/orders/${btn.dataset.orderId}/cancel`, {
+                        method: 'POST',
+                        body: { reason }
+                      });
+                      const d = await res.json();
+                      if (!res.ok) throw new Error(d.error);
+                      toast(`Order #${btn.dataset.orderId} successfully cancelled.`);
+                      renderTab('orders');
+                    } catch (err) {
+                      toast(err.message || 'Could not cancel order.');
+                    }
+                  };
+                });
+
+                // Return Order Event Delegate
+                $$('.return-order-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const reason = prompt('Please specify return reason (e.g. Size Exchange / Drape fit):', 'Size Exchange Needed');
+                    if (!reason) return;
+                    try {
+                      const res = await fetchAuth(`/api/orders/${btn.dataset.orderId}/return`, {
+                        method: 'POST',
+                        body: { reason }
+                      });
+                      const d = await res.json();
+                      if (!res.ok) throw new Error(d.error);
+                      toast('Return request submitted. Our concierge will schedule courier pickup.');
+                      renderTab('orders');
+                    } catch (err) {
+                      toast(err.message || 'Could not initiate return.');
+                    }
+                  };
+                });
+              } else {
+                container.innerHTML = `
+                  <div class="empty" style="text-align:center;padding:4rem 1rem">
+                    <h3>No Atelier Orders Placed Yet</h3>
+                    <p class="muted" style="margin:0.8rem 0 1.5rem">Your curated handcrafted garments and orders will appear here.</p>
+                    <a class="btn gold" href="shop.html">Explore The Catalogue</a>
+                  </div>
+                `;
+              }
+            } catch {
+              container.innerHTML = '<p class="muted">Could not retrieve order history at this time.</p>';
+            }
+          }
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Saved Addresses
+             ========================================================================== */
+          else if (tabName === 'addresses') {
+            container.innerHTML = '<p class="muted">Loading addresses from atelier database...</p>';
+            try {
+              const res = await fetchAuth('/api/user/addresses');
+              const addresses = await res.json();
+
+              container.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+                  <h2>Delivery Addresses</h2>
+                  <button class="btn gold sm" id="add-addr-modal-btn">+ Add New Address</button>
+                </div>
+                
+                <div id="new-addr-form-box" style="display:none;background:#fff;border:1px solid var(--gold);padding:1.8rem;border-radius:var(--radius);margin-bottom:2rem">
+                  <h3 style="margin-bottom:1rem">Add Bespoke Delivery Address</h3>
+                  <form id="create-addr-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                    <div><label style="font-size:0.85rem;font-weight:600">Address Label</label><input name="label" placeholder="Home, Atelier, Work" value="Home" required></div>
+                    <div><label style="font-size:0.85rem;font-weight:600">Recipient Name</label><input name="recipientName" placeholder="Full name" value="${esc(customer.name)}" required></div>
+                    <div><label style="font-size:0.85rem;font-weight:600">Contact Phone</label><input name="phone" placeholder="10-digit mobile" value="${esc(customer.phone || '')}" required></div>
+                    <div><label style="font-size:0.85rem;font-weight:600">PIN Code</label><input name="pincode" placeholder="400001" required></div>
+                    <div style="grid-column:1/-1"><label style="font-size:0.85rem;font-weight:600">Address Line 1</label><input name="addressLine1" placeholder="Apartment, building, street" required></div>
+                    <div><label style="font-size:0.85rem;font-weight:600">City</label><input name="city" placeholder="Mumbai" required></div>
+                    <div><label style="font-size:0.85rem;font-weight:600">State</label><input name="state" placeholder="Maharashtra" required></div>
+                    <div style="grid-column:1/-1;display:flex;gap:0.8rem;margin-top:0.6rem">
+                      <button class="btn gold sm" type="submit">Save Address</button>
+                      <button class="btn ghost sm" type="button" id="cancel-addr-btn">Cancel</button>
+                    </div>
+                  </form>
+                </div>
+
+                <div class="address-grid">
+                  ${addresses && addresses.length ? addresses.map(a => `
+                    <div class="address-box ${a.is_default ? 'is-default' : ''}">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem">
+                        <strong style="color:var(--wine)">${esc(a.label)}</strong>
+                        ${a.is_default ? '<span class="hero-pill" style="font-size:0.68rem;padding:0.15rem 0.5rem">Default</span>' : ''}
+                      </div>
+                      <p style="font-weight:600">${esc(a.recipient_name)}</p>
+                      <p style="font-size:0.9rem;color:var(--esp-light);margin:0.3rem 0">${esc(a.address_line1)}</p>
+                      <p style="font-size:0.9rem;color:var(--esp-light)">${esc(a.city)}, ${esc(a.state)} — ${a.pincode}</p>
+                      <p style="font-size:0.85rem;color:var(--muted);margin-top:0.4rem">Phone: ${esc(a.phone)}</p>
+                      <div style="margin-top:1rem;border-top:1px solid var(--line);padding-top:0.8rem">
+                        <button class="link delete-addr-btn" data-addr-id="${a.id}" style="color:#b91c1c;font-size:0.82rem;background:none;border:none;cursor:pointer">Delete Address</button>
+                      </div>
+                    </div>
+                  `).join('') : '<p class="muted">No saved addresses found. Add one for rapid one-click checkout.</p>'}
+                </div>
+              `;
+
+              $('#add-addr-modal-btn').onclick = () => { $('#new-addr-form-box').style.display = 'block'; };
+              $('#cancel-addr-btn').onclick = () => { $('#new-addr-form-box').style.display = 'none'; };
+
+              $('#create-addr-form').onsubmit = async e => {
+                e.preventDefault();
+                const formData = Object.fromEntries(new FormData(e.target));
+                try {
+                  const r = await fetchAuth('/api/user/addresses', { method: 'POST', body: formData });
+                  if (!r.ok) throw new Error((await r.json()).error);
+                  toast('Delivery address saved successfully.');
+                  renderTab('addresses');
+                } catch (err) {
+                  toast(err.message || 'Could not save address.');
+                }
+              };
+
+              $$('.delete-addr-btn').forEach(b => {
+                b.onclick = async () => {
+                  if (!confirm('Are you sure you want to remove this address?')) return;
+                  try {
+                    await fetchAuth(`/api/user/addresses/${b.dataset.addrId}`, { method: 'DELETE' });
+                    toast('Address removed.');
+                    renderTab('addresses');
+                  } catch {
+                    toast('Could not delete address.');
+                  }
+                };
+              });
+            } catch {
+              container.innerHTML = '<p class="muted">Failed to load addresses.</p>';
+            }
+          }
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Curated Wishlist
+             ========================================================================== */
+          else if (tabName === 'wishlist') {
+            container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
+            try {
+              const res = await fetchAuth('/api/user/wishlist');
+              let items = [];
+              if (res.ok) {
+                items = await res.json();
+                db.setWishlist(items.map(p => Number(p.id)));
+              } else {
+                items = db.getWishlist().map(byId).filter(Boolean);
+              }
+
+              if (items.length) {
+                container.innerHTML = `
+                  <div style="margin-bottom:1.5rem">
+                    <h2>Saved Trousseau Pieces (${items.length})</h2>
+                  </div>
+                  <div class="grid">${items.map(card).join('')}</div>
+                `;
+              } else {
+                container.innerHTML = `
+                  <div class="empty" style="text-align:center;padding:4rem 1rem">
+                    <h3>Your Wishlist is Empty</h3>
+                    <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
+                    <a class="btn gold" href="shop.html">Explore The Catalogue</a>
+                  </div>
+                `;
+              }
+            } catch (err) {
+              container.innerHTML = '<div class="empty" style="text-align:center;padding:3rem 1rem"><p class="muted">Could not load your wishlist.</p></div>';
+            }
+          }
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Profile Details
+             ========================================================================== */
+          else if (tabName === 'profile') {
+            container.innerHTML = `
+              <div class="account-card" style="max-width:540px">
+                <h2 style="margin-bottom:1.2rem">Patron Profile Specifications</h2>
+                <form id="edit-profile-form" style="display:grid;gap:1.2rem">
+                  <div>
+                    <label style="font-size:0.85rem;font-weight:600">Full Name</label>
+                    <input id="prof-name" value="${esc(customer.name)}" required>
+                  </div>
+                  <div>
+                    <label style="font-size:0.85rem;font-weight:600">Email Address (Read-only)</label>
+                    <input value="${esc(customer.email)}" disabled style="background:#f5f5f5">
+                  </div>
+                  <div>
+                    <label style="font-size:0.85rem;font-weight:600">Contact Number</label>
+                    <input id="prof-phone" value="${esc(customer.phone || '')}" placeholder="+91 98765 43210">
+                  </div>
+                  <div>
+                    <label style="font-size:0.85rem;font-weight:600">Account Tier</label>
+                    <p style="color:${customer.role === 'admin' ? 'var(--admin-forest)' : 'var(--gold-dark)'};font-weight:600">${customer.role === 'admin' ? 'Atelier Master & Administrator' : 'VIP Patron Concierge'}</p>
+                  </div>
+                  <button class="btn gold" type="submit" style="margin-top:0.5rem">Update Profile</button>
+                </form>
               </div>
-              <button class="btn ghost sm" id="signout-btn" style="color:#b91c1c;border-color:#fca5a5">Sign Out</button>
-            </div>
+            `;
 
-            <div class="account-nav">
-              <button class="account-tab-btn active" data-tab="orders">My Orders &amp; Tracking</button>
-              <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
-              <button class="account-tab-btn" data-tab="wishlist">Curated Wishlist</button>
-              <button class="account-tab-btn" data-tab="profile">Profile Details</button>
-            </div>
+            $('#edit-profile-form').onsubmit = async e => {
+              e.preventDefault();
+              const name = $('#prof-name').value;
+              const phone = $('#prof-phone').value;
+              try {
+                const res = await fetchAuth('/api/auth/profile', {
+                  method: 'PUT',
+                  body: { name, phone }
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error);
+                db.set('user', { ...user, name: d.name, phone: d.phone });
+                toast('Profile updated successfully.');
+                pages.login();
+              } catch (err) {
+                toast(err.message || 'Could not update profile.');
+              }
+            };
+          }
+        };
 
-            <div id="account-tab-content">Loading your bespoke details...</div>
-          `;
+        $$('.account-tab-btn').forEach(b => {
+          b.onclick = () => renderTab(b.dataset.tab);
+        });
+
+        renderTab('orders');
+        return;
+      }
+
+      // Guest / Unauthenticated: Tabbed Sign In / Register
+      root.className = 'narrow';
+      const renderAuth = (mode = 'in') => {
+        root.innerHTML = `
+          <div class="wrap" style="max-width:440px;margin:3.5rem auto;background:#fff;padding:2.5rem;border-radius:var(--radius);border:1px solid var(--line);box-shadow:var(--shadow-md)">
+            <div class="tabs" style="display:flex;margin-bottom:1.5rem;border-bottom:1px solid var(--line)">
+              <button style="flex:1;padding:0.75rem;background:none;border:none;border-bottom:2px solid ${mode === 'in' ? 'var(--gold)' : 'transparent'};font:600 1rem var(--sans);cursor:pointer;color:${mode === 'in' ? 'var(--wine)' : 'var(--muted)'}" data-m="in">Sign In</button>
+              <button style="flex:1;padding:0.75rem;background:none;border:none;border-bottom:2px solid ${mode === 'up' ? 'var(--gold)' : 'transparent'};font:600 1rem var(--sans);cursor:pointer;color:${mode === 'up' ? 'var(--wine)' : 'var(--muted)'}" data-m="up">Create Account</button>
+            </div>
+            <form id="auth-form" style="display:grid;gap:1.2rem">
+              ${mode === 'up' ? '<div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Full Name</label><input name="name" required placeholder="Meera Kapoor"></div>' : ''}
+              <div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Email Address</label><input name="email" type="email" required placeholder="meera@example.com"></div>
+              ${mode === 'up' ? '<div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Mobile Number (Optional)</label><input name="phone" placeholder="+91 98765 43210"></div>' : ''}
+              <div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Password</label><input name="password" type="password" required placeholder="••••••••"></div>
+              <button class="btn gold block" type="submit" style="margin-top:0.5rem">${mode === 'in' ? 'Sign In to Atelier' : 'Join VIP Atelier'}</button>
+            </form>
+            <div id="auth-admin-hint" style="display:none;margin-top:1.2rem;padding:0.85rem;background:var(--ivory-soft);border:1px solid var(--gold);border-radius:var(--radius-sm);text-align:center;font-size:0.85rem">
+              <span>Administrator credentials detected.</span><br>
+              <a href="admin.html" style="color:var(--wine);font-weight:600;text-decoration:underline;display:inline-block;margin-top:0.3rem">Open Atelier Admin Portal &rarr;</a>
+            </div>
+            <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--line);font-size:0.85rem;color:var(--muted);text-align:center">
+              Demo Patron: <strong>meera@example.com</strong> / <strong>password123</strong>
+            </div>
+          </div>`;
+
+        $$('[data-m]').forEach(b => b.onclick = () => renderAuth(b.dataset.m));
+
+        $('#auth-form').onsubmit = async e => {
+          e.preventDefault();
+          const d = Object.fromEntries(new FormData(e.target));
+          const endpoint = mode === 'in' ? '/api/auth/customer/login' : '/api/auth/register';
+
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(d)
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              if (res.status === 403 && data.error && data.error.toLowerCase().includes('admin')) {
+                const hint = $('#auth-admin-hint');
+                if (hint) hint.style.display = 'block';
+              }
+              throw new Error(data.error);
+            }
+
+            db.setCustomerToken(data.token);
+            db.setCustomerUser(data.user);
+            await syncUserWishlist();
+            const localCart = db.get('cart', []);
+            if (localCart.length) {
+              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
+            }
+            toast(`Welcome, ${data.user.name}!`);
+            mountChrome();
+            pages.login();
+          } catch (err) {
+            toast(err.message || 'Authentication error. Please retry.');
+          }
+        };
+      };
+
+      renderAuth();
+    },
+
+    /* ---------- Dedicated Atelier Admin Dashboard ---------- */
+    async admin() {
+      const root = $('#auth');
+      if (!root) return;
+
+      document.body.classList.add('admin-dashboard-theme');
+      const siteHeader = $('#site-header');
+      if (siteHeader) {
+        siteHeader.innerHTML = '';
+        siteHeader.style.display = 'none';
+      }
+
+      const admin = db.adminUser();
+      const token = db.adminToken();
+
+      if (admin && token) {
+        renderAdminDashboard(root, admin);
+        return;
+      }
+
+      // Guest Admin: Render Stone & Forest Green Admin Sign In card
+      root.className = 'narrow';
+      root.innerHTML = `
+        <div class="wrap" style="max-width:440px;margin:3.5rem auto;background:var(--admin-sage);padding:2.5rem;border-radius:var(--radius);border:1px solid var(--admin-border);box-shadow:0 4px 16px rgba(55,59,56,0.1);color:var(--admin-charcoal)">
+          <div style="text-align:center;margin-bottom:1.5rem">
+            <span class="admin-role-badge">Atelier Management Portal</span>
+            <h2 style="font-family:var(--serif);margin-top:0.4rem;color:var(--admin-charcoal)">Admin Sign In</h2>
+            <p class="muted" style="font-size:0.88rem;color:var(--admin-charcoal-muted)">Restricted access for Atelier administrators and curators.</p>
+          </div>
+          <form id="admin-direct-login-form" style="display:grid;gap:1.2rem">
+            <div>
+              <label style="font-weight:600;font-size:0.85rem">Admin Email</label>
+              <input name="email" type="email" value="admin@satinostitch.com" required style="background:#fff">
+            </div>
+            <div>
+              <label style="font-weight:600;font-size:0.85rem">Password</label>
+              <input name="password" type="password" value="admin123" required style="background:#fff">
+            </div>
+            <button class="btn gold block" type="submit" style="background-color:var(--admin-forest)!important;color:#fff!important;border-color:var(--admin-forest)!important">Sign In as Atelier Admin</button>
+            <div style="text-align:center;margin-top:0.6rem">
+              <a href="index.html" style="font-size:0.84rem;color:var(--admin-forest);text-decoration:none;font-weight:500">&larr; Return to SATINOSTITCH Store</a>
+            </div>
+          </form>
+        </div>`;
+
+      $('#admin-direct-login-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const d = Object.fromEntries(new FormData(e.target));
+        try {
+          const res = await fetch('/api/auth/admin/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(d)
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          if (data.user.role !== 'admin') throw new Error('Account does not possess administrator privileges.');
+          db.setAdminToken(data.token);
+          db.setAdminUser(data.user);
+          toast('Welcome to the SATINOSTITCH Atelier Portal!');
+          pages.admin();
+        } catch (err) {
+          toast(err.message || 'Authentication error.');
+        }
+      };
+
+      function renderAdminDashboard(containerEl, currentAdmin) {
+        containerEl.className = 'admin-shell';
+        document.body.classList.add('admin-dashboard-theme');
+        const siteH = $('#site-header');
+        if (siteH) {
+          siteH.innerHTML = '';
+          siteH.style.display = 'none';
         }
 
-        $('#signout-btn').onclick = () => {
+        containerEl.innerHTML = `
+          <!-- Off-canvas backdrop overlay for tablet/mobile -->
+          <div class="admin-sidebar-backdrop" id="admin-sidebar-backdrop"></div>
+
+          <!-- Deep Forest Green Atelier Sidebar -->
+          <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="admin-sidebar-brand">
+              <div class="admin-sidebar-brand-top">
+                <div class="admin-sidebar-logo-wrap">
+                  <img src="images/emblem-gold.png" alt="SATINOSTITCH" class="admin-sidebar-emblem">
+                  <img src="images/logo-wordmark-gold.png" alt="SATINOSTITCH" class="admin-sidebar-wordmark">
+                </div>
+                <button class="admin-sidebar-close-btn" id="admin-sidebar-close-btn" aria-label="Close navigation">&times;</button>
+              </div>
+              <div class="admin-sidebar-tagline">Haute Couture &bull; Atelier Management</div>
+              <div class="admin-sidebar-badge">
+                <span class="pulse-dot"></span>
+                <span>Atelier Master Portal</span>
+              </div>
+            </div>
+
+            <div class="admin-sidebar-nav-wrap">
+              <div class="admin-nav-section-title">Operations &amp; Intelligence</div>
+              <nav class="admin-sidebar-nav">
+                <button class="admin-nav-item active account-tab-btn" data-tab="overview">
+                  <span class="admin-nav-icon">📊</span>
+                  <span class="admin-nav-text">Atelier Overview</span>
+                </button>
+                <button class="admin-nav-item account-tab-btn" data-tab="admin-orders">
+                  <span class="admin-nav-icon">📦</span>
+                  <span class="admin-nav-text">Orders &amp; Fulfillment</span>
+                </button>
+                <button class="admin-nav-item account-tab-btn" data-tab="activity">
+                  <span class="admin-nav-icon">⚡</span>
+                  <span class="admin-nav-text">Live Activity Stream</span>
+                  <span class="admin-live-pulse-sm"></span>
+                </button>
+              </nav>
+
+              <div class="admin-nav-section-title" style="margin-top:1.4rem">Catalog &amp; Patrons</div>
+              <nav class="admin-sidebar-nav">
+                <button class="admin-nav-item account-tab-btn" data-tab="crud">
+                  <span class="admin-nav-icon">✨</span>
+                  <span class="admin-nav-text">Garment Catalog (CRUD)</span>
+                </button>
+                <button class="admin-nav-item account-tab-btn" data-tab="coupons">
+                  <span class="admin-nav-icon">🏷️</span>
+                  <span class="admin-nav-text">Promotional Coupons</span>
+                </button>
+                <button class="admin-nav-item account-tab-btn" data-tab="users">
+                  <span class="admin-nav-icon">👑</span>
+                  <span class="admin-nav-text">Patrons &amp; Staff Roles</span>
+                </button>
+                <button class="admin-nav-item account-tab-btn" data-tab="profile">
+                  <span class="admin-nav-icon">🔒</span>
+                  <span class="admin-nav-text">Profile &amp; Security</span>
+                </button>
+              </nav>
+            </div>
+
+            <div class="admin-sidebar-footer">
+              <div class="admin-user-profile-tile">
+                <div class="admin-avatar">${esc((currentAdmin.name || 'A')[0].toUpperCase())}</div>
+                <div class="admin-user-info">
+                  <div class="admin-user-name">${esc(currentAdmin.name)}</div>
+                  <div class="admin-user-email">${esc(currentAdmin.email)}</div>
+                  <div class="admin-user-role-tag">Atelier Administrator</div>
+                </div>
+              </div>
+              <div class="admin-sidebar-actions">
+                <a href="index.html" class="admin-action-btn" title="View Storefront">
+                  <span>Storefront &rarr;</span>
+                </a>
+                <button id="admin-signout-btn" class="admin-action-btn signout" title="Sign Out">
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Main Viewport with Sticky Topbar -->
+          <div class="admin-main-viewport">
+            <header class="admin-topbar">
+              <div class="admin-topbar-left">
+                <button class="admin-sidebar-toggle-btn" id="admin-sidebar-toggle-btn" aria-label="Toggle navigation" title="Menu">☰</button>
+                <div class="admin-breadcrumbs">
+                  <span class="crumb-root">SATINOSTITCH Atelier</span>
+                  <span class="crumb-sep">/</span>
+                  <span class="crumb-active" id="crumb-current">Atelier Overview</span>
+                </div>
+              </div>
+              <div class="admin-topbar-right">
+                <div class="admin-live-badge-top">
+                  <span class="pulse-dot"></span>
+                  <span>PostgreSQL Live Sync</span>
+                </div>
+                <span class="admin-sync-time" id="admin-topbar-sync-time">Just now</span>
+                <button id="admin-topbar-sync-btn" class="btn ghost sm" style="font-size:0.75rem;padding:0.35rem 0.75rem;color:var(--admin-forest);border-color:var(--admin-forest)">
+                  🔄 Sync Now
+                </button>
+              </div>
+            </header>
+
+            <div class="admin-content-area">
+              <div id="account-tab-content">Loading bespoke atelier data...</div>
+            </div>
+          </div>
+        `;
+
+        $('#admin-signout-btn').onclick = () => {
           if (window._adminSyncInterval) clearInterval(window._adminSyncInterval);
-          document.body.classList.remove('admin-dashboard-theme');
-          const siteHeader = $('#site-header');
-          if (siteHeader) siteHeader.style.display = '';
-          db.clearAuth();
-          toast('You have successfully signed out.');
-          setTimeout(() => { location.href = 'index.html'; }, 500);
+          db.clearAdminAuth();
+          toast('Atelier administrative session closed.');
+          pages.admin();
         };
+
+        const closeSidebar = () => {
+          const sb = $('#admin-sidebar');
+          const bd = $('#admin-sidebar-backdrop');
+          if (sb) sb.classList.remove('open');
+          if (bd) bd.classList.remove('active');
+          document.body.classList.remove('admin-sidebar-open');
+        };
+
+        const openSidebar = () => {
+          const sb = $('#admin-sidebar');
+          const bd = $('#admin-sidebar-backdrop');
+          if (sb) sb.classList.add('open');
+          if (bd) bd.classList.add('active');
+          document.body.classList.add('admin-sidebar-open');
+        };
+
+        const toggleBtn = $('#admin-sidebar-toggle-btn');
+        if (toggleBtn) {
+          toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            const sb = $('#admin-sidebar');
+            if (sb && sb.classList.contains('open')) {
+              closeSidebar();
+            } else {
+              openSidebar();
+            }
+          };
+        }
+
+        const closeBtn = $('#admin-sidebar-close-btn');
+        if (closeBtn) closeBtn.onclick = closeSidebar;
+
+        const backdrop = $('#admin-sidebar-backdrop');
+        if (backdrop) backdrop.onclick = closeSidebar;
+
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') closeSidebar();
+        });
+
+        const topSyncBtn = $('#admin-topbar-sync-btn');
+        if (topSyncBtn) {
+          topSyncBtn.onclick = () => {
+            toast('Refreshing atelier metrics from PostgreSQL...');
+            const activeTab = $('.account-tab-btn.active')?.dataset.tab || 'overview';
+            renderTab(activeTab, true);
+          };
+        }
 
         // Utility: Relative time formatter for live activities
         const timeAgo = (dateStr) => {
@@ -1649,9 +2533,27 @@
           const container = $('#account-tab-content');
           if (!container) return;
 
+          // Breadcrumb Synchronization
+          const tabTitles = {
+            'overview': 'Atelier Overview & Intelligence',
+            'admin-orders': 'Orders & Fulfillment Pipeline',
+            'activity': 'Live Patron Activity Stream',
+            'crud': 'Garment Catalog Management (CRUD)',
+            'coupons': 'Promotional Coupons & Privileges',
+            'users': 'Registered Patrons & Staff Roles',
+            'profile': 'Administrator Profile & Security'
+          };
+          const crumbActive = $('#crumb-current');
+          if (crumbActive) crumbActive.textContent = tabTitles[tabName] || 'Atelier Dashboard';
+
+          const topbarSyncTime = $('#admin-topbar-sync-time');
+          if (topbarSyncTime) {
+            topbarSyncTime.textContent = 'Synced: ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+          }
+
           // Manage live sync auto-polling (every 15s) for real-time monitoring
           if (window._adminSyncInterval) clearInterval(window._adminSyncInterval);
-          if (isAdmin && (tabName === 'overview' || tabName === 'activity')) {
+          if ((tabName === 'overview' || tabName === 'activity')) {
             window._adminSyncInterval = setInterval(() => {
               if (document.hidden) return;
               const currentActive = $('.account-tab-btn.active')?.dataset.tab;
@@ -1702,75 +2604,108 @@
 
               const nowTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+              const grossRev = summary.grossRevenue ?? summary.totalRevenue ?? 0;
+              const validOrders = summary.validOrdersCount ?? summary.totalOrders ?? 0;
+              const totalPatrons = summary.totalCustomers ?? 0;
+              const totalViews = summary.totalViews ?? 0;
+              const totalStockUnits = summary.totalStock ?? summary.totalInventoryUnits ?? 0;
+              const lowStockAlerts = summary.lowStockCount ?? summary.lowStock ?? 0;
+              const aov = summary.averageOrderValue ?? summary.aov ?? (validOrders > 0 ? Math.round(grossRev / validOrders) : 0);
+              const netRev = summary.netRevenue ?? grossRev;
+
               container.innerHTML = `
-                <!-- Live Synchronization Banner -->
-                <div class="admin-live-header">
-                  <div>
-                    <span class="admin-live-badge">
-                      <span class="admin-live-dot"></span>
-                      PostgreSQL Real-Time Synchronisation Active
-                    </span>
-                    <p style="margin:0.25rem 0 0;font-size:0.83rem;color:var(--admin-charcoal-muted)">
-                      Live pulse synced across customer browsing, cart additions, commissions, and fulfillment.
-                    </p>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:0.9rem">
-                    <span style="font-size:0.82rem;color:var(--admin-charcoal-muted)">Refreshed: ${nowTime}</span>
-                    <button class="btn ghost sm" id="admin-manual-sync-btn" style="padding:0.35rem 0.85rem;font-size:0.82rem">
-                      🔄 Sync Now
-                    </button>
-                  </div>
+                <!-- Quick Actions Bar -->
+                <div class="admin-quick-actions-bar">
+                  <button class="quick-action-btn primary" id="quick-act-new-garment">
+                    <span>+</span> New Garment
+                  </button>
+                  <button class="quick-action-btn" id="quick-act-new-coupon">
+                    <span>🏷️</span> New Promo Code
+                  </button>
+                  <button class="quick-action-btn" id="quick-act-view-orders">
+                    <span>📦</span> Review Orders
+                  </button>
+                  <button class="quick-action-btn" id="quick-act-live-feed">
+                    <span>⚡</span> Live Activity Stream
+                  </button>
+                  <button class="quick-action-btn" id="quick-act-sync-metrics">
+                    <span>🔄</span> Refresh PostgreSQL Pulse
+                  </button>
                 </div>
 
-                <!-- 6 Metric KPI Tiles from Real Database Records -->
-                <div class="admin-stat-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:1rem;margin-bottom:1.8rem">
-                  <div class="admin-stat-tile">
-                    <div class="admin-stat-title">Gross Revenue</div>
-                    <div class="admin-stat-value" style="color:var(--admin-forest)">${money(summary.grossRevenue || 0)}</div>
-                    <div class="admin-stat-meta">Net (excl. discounts): ${money(summary.netRevenue || 0)}</div>
-                  </div>
-                  <div class="admin-stat-tile">
-                    <div class="admin-stat-title">Patron Orders</div>
-                    <div class="admin-stat-value">${summary.validOrdersCount || 0}</div>
-                    <div class="admin-stat-meta">Avg Order Value: ${money(summary.averageOrderValue || 0)}</div>
-                  </div>
-                  <div class="admin-stat-tile">
-                    <div class="admin-stat-title">Registered Patrons</div>
-                    <div class="admin-stat-value">${summary.totalCustomers || 0}</div>
-                    <div class="admin-stat-meta">Curated patrons in database</div>
-                  </div>
-                  <div class="admin-stat-tile">
-                    <div class="admin-stat-title">Storefront Demand</div>
-                    <div class="admin-stat-value">${summary.totalViews || 0} views</div>
-                    <div class="admin-stat-meta">Tracked garment visits</div>
-                  </div>
-                  <div class="admin-stat-tile">
-                    <div class="admin-stat-title">Atelier Stock Units</div>
-                    <div class="admin-stat-value">${summary.totalStock || 0} pcs</div>
-                    <div class="admin-stat-meta">Across ${summary.totalProducts || 0} active designs</div>
-                  </div>
-                  <div class="admin-stat-tile">
-                    <div class="admin-stat-title">Low Stock Alerts</div>
-                    <div class="admin-stat-value" style="color:${summary.lowStockCount > 0 ? '#B91C1C' : 'var(--admin-forest)'}">
-                      ${summary.lowStockCount || 0} items
+                <!-- 4 Top KPI Cards from Real Database Records -->
+                <div class="admin-kpi-grid">
+                  <div class="admin-kpi-card gold">
+                    <div class="kpi-top-row">
+                      <span class="kpi-title">Gross Atelier Revenue</span>
+                      <div class="kpi-icon-wrap">💰</div>
                     </div>
-                    <div class="admin-stat-meta">${summary.lowStockCount > 0 ? 'Requires immediate restock' : 'All stock levels optimal'}</div>
+                    <div class="kpi-value">${money(grossRev)}</div>
+                    <div class="kpi-trend-pill positive">↑ ${validOrders} commissions</div>
+                    <div class="kpi-subtext">Net settled: ${money(netRev)} (excl. discounts)</div>
+                  </div>
+
+                  <div class="admin-kpi-card">
+                    <div class="kpi-top-row">
+                      <span class="kpi-title">Total Commissions</span>
+                      <div class="kpi-icon-wrap">📦</div>
+                    </div>
+                    <div class="kpi-value">${validOrders}</div>
+                    <div class="kpi-trend-pill positive">AOV: ${money(aov)}</div>
+                    <div class="kpi-subtext">Active orders from boutique patrons</div>
+                  </div>
+
+                  <div class="admin-kpi-card">
+                    <div class="kpi-top-row">
+                      <span class="kpi-title">VIP Patrons Enrolled</span>
+                      <div class="kpi-icon-wrap">👑</div>
+                    </div>
+                    <div class="kpi-value">${totalPatrons}</div>
+                    <div class="kpi-trend-pill neutral">${totalViews} garment visits</div>
+                    <div class="kpi-subtext">Curated accounts registered in DB</div>
+                  </div>
+
+                  <div class="admin-kpi-card">
+                    <div class="kpi-top-row">
+                      <span class="kpi-title">Atelier Inventory Stock</span>
+                      <div class="kpi-icon-wrap">🪡</div>
+                    </div>
+                    <div class="kpi-value">${totalStockUnits} <span style="font-size:1.05rem;font-weight:500;color:var(--admin-charcoal-muted)">pcs</span></div>
+                    <div class="kpi-trend-pill ${lowStockAlerts > 0 ? 'warning' : 'positive'}">
+                      ${lowStockAlerts > 0 ? `${lowStockAlerts} restock alerts` : 'Stock Optimal'}
+                    </div>
+                    <div class="kpi-subtext">Across ${summary.totalProducts || 18} active bespoke creations</div>
                   </div>
                 </div>
 
                 <!-- Interactive Sales & Revenue Analytics Graph -->
-                <div class="admin-surface-card" style="margin-bottom:1.8rem">
-                  <div class="admin-graph-header">
+                <div class="admin-analytics-chart-card">
+                  <div class="chart-header-row">
                     <div>
-                      <h3 style="margin-bottom:0.2rem">Haute Couture Sales &amp; Revenue Analytics</h3>
-                      <p class="muted" style="font-size:0.86rem">
-                        Period Revenue: <strong>${money(totalRangeRev)}</strong> &bull; Volume: <strong>${totalRangeOrders} orders</strong> (excludes cancelled orders)
+                      <h3>Bespoke Sales Velocity &amp; Revenue Dynamics</h3>
+                      <p class="muted" style="margin:0.2rem 0 0;font-size:0.86rem">
+                        Interactive visualization of customer commissions settled through PostgreSQL.
                       </p>
                     </div>
                     <div class="admin-graph-toggle">
                       <button class="admin-graph-toggle-btn ${activeRange === 'daily' ? 'active' : ''}" data-range="daily">Daily (7 Days)</button>
                       <button class="admin-graph-toggle-btn ${activeRange === 'weekly' ? 'active' : ''}" data-range="weekly">Weekly (4 Weeks)</button>
                       <button class="admin-graph-toggle-btn ${activeRange === 'monthly' ? 'active' : ''}" data-range="monthly">Monthly (6 Months)</button>
+                    </div>
+                  </div>
+
+                  <div class="chart-summary-strip">
+                    <div class="chart-summary-item">
+                      <span class="chart-summary-label">Selected Period Revenue</span>
+                      <span class="chart-summary-val">${money(totalRangeRev)}</span>
+                    </div>
+                    <div class="chart-summary-item">
+                      <span class="chart-summary-label">Settled Orders</span>
+                      <span class="chart-summary-val" style="color:var(--admin-charcoal)">${totalRangeOrders} commissions</span>
+                    </div>
+                    <div class="chart-summary-item">
+                      <span class="chart-summary-label">Average Commission</span>
+                      <span class="chart-summary-val" style="color:var(--admin-charcoal)">${money(totalRangeOrders ? Math.round(totalRangeRev / totalRangeOrders) : 0)}</span>
                     </div>
                   </div>
 
@@ -2068,6 +3003,32 @@
                 };
               }
 
+              // Event Delegate: Quick Actions Bar
+              const qNewGarment = $('#quick-act-new-garment');
+              if (qNewGarment) qNewGarment.onclick = () => {
+                renderTab('crud');
+                setTimeout(() => {
+                  const addBtn = $('#toggle-new-product-form');
+                  if (addBtn) addBtn.click();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 100);
+              };
+
+              const qNewCoupon = $('#quick-act-new-coupon');
+              if (qNewCoupon) qNewCoupon.onclick = () => renderTab('coupons');
+
+              const qViewOrders = $('#quick-act-view-orders');
+              if (qViewOrders) qViewOrders.onclick = () => renderTab('admin-orders');
+
+              const qLiveFeed = $('#quick-act-live-feed');
+              if (qLiveFeed) qLiveFeed.onclick = () => renderTab('activity');
+
+              const qSyncMetrics = $('#quick-act-sync-metrics');
+              if (qSyncMetrics) qSyncMetrics.onclick = () => {
+                toast('Refreshing PostgreSQL atelier metrics...');
+                renderTab('overview', true);
+              };
+
               // Event Delegate: Navigation shortcuts
               const allOrdBtn = $('#go-all-orders-btn');
               if (allOrdBtn) allOrdBtn.onclick = () => renderTab('admin-orders');
@@ -2102,7 +3063,7 @@
                   if (!select) return;
                   const newStatus = select.value;
                   try {
-                    const r = await fetchAuth(`/api/orders/${oid}/status`, {
+                    const r = await fetchAuth(`/api/admin/orders/${oid}/status`, {
                       method: 'PUT',
                       body: { status: newStatus }
                     });
@@ -2297,7 +3258,7 @@
                     if (!select) return;
                     const newStatus = select.value;
                     try {
-                      const r = await fetchAuth(`/api/orders/${oid}/status`, {
+                      const r = await fetchAuth(`/api/admin/orders/${oid}/status`, {
                         method: 'PUT',
                         body: { status: newStatus }
                       });
@@ -2315,7 +3276,7 @@
                   btn.onclick = async () => {
                     const oid = btn.dataset.orderId;
                     try {
-                      const r = await fetchAuth(`/api/orders/${oid}/payment`, {
+                      const r = await fetchAuth(`/api/admin/orders/${oid}/payment`, {
                         method: 'PUT',
                         body: { paymentStatus: 'paid' }
                       });
@@ -2766,9 +3727,9 @@
                 container.innerHTML = orders.map(o => {
                   const items = Array.isArray(o.items) ? o.items : [];
                   const statusClass = (o.status || 'confirmed').toLowerCase().replace(/\s+/g, '-');
-
+                  
                   // Tracking Steps Logic
-                  const steps = ['Confirmed', 'In Workshop', 'Dispatched', 'Out for Delivery', 'Delivered'];
+                  const steps = ['Confirmed', 'In Atelier', 'Dispatched', 'Out for Delivery', 'Delivered'];
                   const currentIdx = steps.indexOf(o.status);
 
                   return `
@@ -2788,15 +3749,15 @@
                       ${o.status !== 'Cancelled' ? `
                         <div class="tracking-stepper">
                           ${steps.map((s, idx) => {
-                    const isDone = currentIdx >= idx;
-                    const isCurrent = currentIdx === idx;
-                    return `
+                            const isDone = currentIdx >= idx;
+                            const isCurrent = currentIdx === idx;
+                            return `
                               <div class="tracking-step ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''}">
                                 <div class="tracking-dot">${isDone ? '✓' : idx + 1}</div>
                                 <div class="tracking-label">${s}</div>
                               </div>
                             `;
-                  }).join('')}
+                          }).join('')}
                         </div>
                       ` : `
                         <div style="background:#fee2e2;color:#991b1b;padding:0.8rem 1rem;border-radius:var(--radius-sm);margin:1rem 0;font-size:0.9rem">
@@ -2822,7 +3783,7 @@
                           Tracking: <strong>${o.tracking_number || 'TRK-SS-PENDING'}</strong> · Payment: <strong>${(o.payment_method || 'COD').toUpperCase()}</strong> (${o.payment_status})
                         </span>
                         <div style="display:flex;gap:0.6rem">
-                          ${['Confirmed', 'In Workshop'].includes(o.status) ? `
+                          ${['Confirmed', 'In Atelier'].includes(o.status) ? `
                             <button class="btn ghost sm cancel-order-btn" data-order-id="${o.id}" style="color:#b91c1c;border-color:#fca5a5">Cancel Order</button>
                           ` : ''}
                           ${o.status === 'Delivered' ? `
@@ -2975,7 +3936,7 @@
              CUSTOMER / PERSONAL TAB: Curated Wishlist
              ========================================================================== */
           else if (tabName === 'wishlist') {
-            container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curatedCollection...</p></div>';
+            container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your curated trousseau...</p></div>';
             try {
               const res = await fetchAuth('/api/user/wishlist');
               let items = [];
@@ -2989,7 +3950,7 @@
               if (items.length) {
                 container.innerHTML = `
                   <div style="margin-bottom:1.5rem">
-                    <h2>SavedCollection Pieces (${items.length})</h2>
+                    <h2>Saved Trousseau Pieces (${items.length})</h2>
                   </div>
                   <div class="grid">${items.map(card).join('')}</div>
                 `;
@@ -2997,7 +3958,7 @@
                 container.innerHTML = `
                   <div class="empty" style="text-align:center;padding:4rem 1rem">
                     <h3>Your Wishlist is Empty</h3>
-                    <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dreamCollection by tapping the heart icon on any piece.</p>
+                    <p class="muted" style="margin:0.8rem 0 1.5rem">Curate your dream trousseau by tapping the heart icon on any piece.</p>
                     <a class="btn gold" href="shop.html">Explore The Catalogue</a>
                   </div>
                 `;
@@ -3106,7 +4067,7 @@
             await syncUserWishlist();
             const localCart = db.get('cart', []);
             if (localCart.length) {
-              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => { });
+              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
             }
             toast(`Welcome, ${data.user.name}!`);
             mountChrome();
@@ -3234,6 +4195,22 @@
   window.checkSystemHealth = checkSystemHealth;
 
   /* ---------- Initialization & Boot ---------- */
+  // Boot Migration: Segregate legacy shared sessions if present
+  try {
+    const legUser = JSON.parse(localStorage.getItem('ss_user') || 'null');
+    const legToken = localStorage.getItem('ss_token');
+    if (legUser && legToken) {
+      if (legUser.role === 'admin' && !localStorage.getItem('ss_admin_token')) {
+        localStorage.setItem('ss_admin_token', legToken);
+        localStorage.setItem('ss_admin_user', JSON.stringify(legUser));
+      } else if (legUser.role === 'customer' && !localStorage.getItem('ss_customer_token')) {
+        localStorage.setItem('ss_customer_token', legToken);
+        localStorage.setItem('ss_customer_user', JSON.stringify(legUser));
+      }
+      localStorage.removeItem('ss_token');
+      localStorage.removeItem('ss_user');
+    }
+  } catch {}
   mountChrome();
   checkSystemHealth();
   const page = document.body.dataset.page;
@@ -3242,8 +4219,8 @@
   // Clean up legacy global ss_wish
   localStorage.removeItem('ss_wish');
 
-  // If user is already logged in, sync their database wishlist on page load
-  const initWishlistPromise = (db.token() && db.user())
+  // If customer is already logged in, sync their database wishlist on page load
+  const initWishlistPromise = (db.customerToken() && db.customerUser())
     ? syncUserWishlist()
     : Promise.resolve().then(() => db.clearGuestWishlist());
 

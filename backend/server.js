@@ -1,539 +1,58 @@
-require('dotenv').config();
+/**
+ * SATINOSTITCH — Haute Couture & Sartorial Western Pret
+ * Modular Express Server Architecture
+ */
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
-const multer = require('multer');
-const bcrypt = require('bcryptjs');
-const db = require('./db');
-const { initializeDatabase } = require('./db/init');
-const {
-  generateToken,
-  authenticateToken,
-  optionalAuth,
-  requireAdmin
-} = require('./middleware/auth');
+const fs = require('fs');
+
+const env = require('./config/env');
+const { testConnection } = require('./config/db');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+
+// Modular Route Handlers
+const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const productRoutes = require('./routes/productRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const cartRoutes = require('./routes/cartRoutes');
+const wishlistRoutes = require('./routes/wishlistRoutes');
+const couponRoutes = require('./routes/couponRoutes');
+const userRoutes = require('./routes/userRoutes');
+const miscRoutes = require('./routes/miscRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Setup Multer for Image Uploads with strict MIME and size limits
-const uploadDir = path.join(__dirname, '..', 'frontend', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+/* ---------- Core Middlewares ---------- */
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Ensure frontend/uploads folder exists
+const uploadsPath = path.join(__dirname, '..', 'frontend', 'uploads');
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, 'garment-' + uniqueSuffix + ext);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-    if (allowed.includes(file.mimetype.toLowerCase())) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid image format. Only JPEG, PNG, and WebP are allowed.'));
-    }
-  }
-});
-
-// Middleware setup
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Serve static frontend assets & uploaded garment media
+app.use('/uploads', express.static(uploadsPath));
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
-// Fallback in-memory catalog
-const loadFallbackProducts = () => {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'products.json'), 'utf8'));
-  } catch {
-    return [];
-  }
-};
+/* ---------- API Routes Mounting ---------- */
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api', miscRoutes);
 
-/* ==========================================================================
-   Health Check & Diagnostics
-   ========================================================================== */
-app.get('/api/health', async (req, res) => {
-  const dbHealth = await db.testConnection();
-  const isHealthy = dbHealth.connected;
-
-  let counts = { products: 0, categories: 0, users: 0, orders: 0, cartItems: 0 };
-  if (isHealthy) {
-    try {
-      const pCount = await db.query('SELECT COUNT(*)::int AS count FROM products;');
-      const cCount = await db.query('SELECT COUNT(*)::int AS count FROM categories;');
-      const uCount = await db.query('SELECT COUNT(*)::int AS count FROM users;');
-      const oCount = await db.query('SELECT COUNT(*)::int AS count FROM orders;');
-      const cartCount = await db.query('SELECT COUNT(*)::int AS count FROM cart_items;');
-      counts = {
-        products: pCount.rows[0].count,
-        categories: cCount.rows[0].count,
-        users: uCount.rows[0].count,
-        orders: oCount.rows[0].count,
-        cartItems: cartCount.rows[0].count
-      };
-    } catch (e) {
-      console.warn('[PostgreSQL] Could not fetch table counts for health check:', e.message);
-    }
-  }
-
-  res.status(isHealthy ? 200 : 503).json({
-    status: isHealthy ? 'ok' : 'degraded',
-    message: isHealthy
-      ? 'SATINOSTITCH server and PostgreSQL database are healthy'
-      : 'SATINOSTITCH server running, but database connection failed',
-    uptime: `${Math.floor(process.uptime())}s`,
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    server: { status: 'online', port: Number(PORT) },
-    database: isHealthy
-      ? {
-        status: 'connected',
-        name: dbHealth.database,
-        user: dbHealth.user,
-        serverTime: dbHealth.time,
-        version: dbHealth.version,
-        ...counts
-      }
-      : {
-        status: 'disconnected',
-        name: process.env.DB_NAME || 'satinostitch',
-        error: dbHealth.error
-      }
-  });
-});
-
-/* ==========================================================================
-   Module 1: Home, Promotional Banners & Collections
-   ========================================================================== */
-app.get('/api/banners', (req, res) => {
-  res.json([
-    {
-      id: 'heritage-couture',
-      badge: 'Haute Couture 2026',
-      title: 'Where Royal Weaves Meet Sharp Sartorial Lines',
-      subtitle: 'Pure Banarasi zari, hand-pleated satin, and bespoke modern pret tailored for grand entrances.',
-      cta: 'Explore The Atelier',
-      link: 'shop.html',
-      secondaryCta: 'Curated Wedding Edit',
-      secondaryLink: 'collections.html?c=wedding',
-      bg: 'linear-gradient(135deg, rgba(91,24,53,0.92) 0%, rgba(28,23,21,0.95) 100%)'
-    },
-    {
-      id: 'festive-chanderi',
-      badge: 'Festive Capsule',
-      title: 'Aangan Festive & Heirloom Chanderi',
-      subtitle: 'Lustrous silks illuminated by hand-block gold foil and delicate gota patti borders.',
-      cta: 'Discover Festive Edit',
-      link: 'shop.html?col=festive',
-      secondaryCta: 'View Lookbook',
-      secondaryLink: 'collections.html?c=festive',
-      bg: 'linear-gradient(135deg, rgba(198,161,91,0.9) 0%, rgba(91,24,53,0.95) 100%)'
-    }
-  ]);
-});
-
-app.get('/api/collections', (req, res) => {
-  res.json([
-    {
-      key: 'wedding',
-      name: 'The Royal Banarasi & Wedding Edit',
-      tagline: 'Imperial silhouettes woven with pure gold zari threads.',
-      image: 'images/wedding-edit.jpg',
-      badge: 'Bridal Couture'
-    },
-    {
-      key: 'festive',
-      name: 'Noor-e-Zari Festive Capsule',
-      tagline: 'Heirloom bandhani and molten tissue silk for gala evenings.',
-      image: 'images/p4.jpg',
-      badge: 'Festive Pret'
-    },
-    {
-      key: 'everyday',
-      name: 'Aangan Breathable Chanderi',
-      tagline: 'Featherlight pure Mulmul hand-block prints and timeless kurtas.',
-      image: 'images/p5.jpg',
-      badge: 'Artisanal Pret'
-    },
-    {
-      key: 'work',
-      name: 'Sovereign Sartorial Suiting',
-      tagline: 'Sharp checkered linen blazers and pleated crepe silhouettes.',
-      image: 'images/p9.jpg',
-      badge: 'Contemporary Pret'
-    }
-  ]);
-});
-
-app.post('/api/newsletter', (req, res) => {
-  const { email } = req.body || {};
-  if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-    return res.status(400).json({ error: 'Please enter a valid email address.' });
-  }
-  res.json({
-    ok: true,
-    message: 'Welcome to the SATINOSTITCH VIP Atelier. Your invitation and styling dispatch have been sent.'
-  });
-});
-
-/* ==========================================================================
-   Module 2: Product Catalogue, Search, Filters & Categories
-   ========================================================================== */
-app.get('/api/categories', async (req, res) => {
-  try {
-    const categories = await db.getCategories();
-    res.json(categories);
-  } catch (err) {
-    console.error('[API] Categories error:', err);
-    res.json([
-      { id: 1, slug: 'ethnic', name: 'Ethnic Couture', count: 7 },
-      { id: 2, slug: 'western', name: 'Western Pret', count: 5 }
-    ]);
-  }
-});
-
-// Category Admin CRUD
-app.post('/api/categories', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { slug, name, description } = req.body || {};
-    if (!slug || !name) {
-      return res.status(400).json({ error: 'Category slug and name are required.' });
-    }
-    const cat = await db.createCategory({ slug, name, description });
-    res.status(201).json(cat);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/categories/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid category ID' });
-  try {
-    const updated = await db.updateCategory(id, req.body || {});
-    if (!updated) return res.status(404).json({ error: 'Category not found.' });
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/categories/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid category ID' });
-  try {
-    const deleted = await db.deleteCategory(id);
-    if (!deleted) return res.status(404).json({ error: 'Category not found.' });
-    res.json({ ok: true, message: `Category ${id} deleted.` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/types', async (req, res) => {
-  try {
-    const types = await db.getTypes();
-    res.json(types);
-  } catch (err) {
-    res.json(['Suit sets', 'Kurtas', 'Sarees', 'Lehengas', 'Dresses', 'Tops & blazers', 'Bottoms']);
-  }
-});
-
-app.get('/api/products', async (req, res) => {
-  const { cat, col, type, q, max, min, sort, inStock } = req.query;
-
-  try {
-    const products = await db.getProducts({
-      category: cat,
-      collection: col,
-      type,
-      search: q,
-      maxPrice: max,
-      minPrice: min,
-      sort,
-      inStock: inStock === 'true' || inStock === '1'
-    });
-    res.json(products);
-  } catch (err) {
-    console.warn('[PostgreSQL] Fallback to in-memory catalog:', err.message);
-    let list = loadFallbackProducts();
-    if (cat) list = list.filter(p => p.cat === cat);
-    if (col) list = list.filter(p => p.col === col);
-    if (type) list = list.filter(p => p.type === type);
-    if (max) list = list.filter(p => p.price <= Number(max));
-    if (q) {
-      const term = q.toLowerCase();
-      list = list.filter(p => p.name.toLowerCase().includes(term) || (p.fabric && p.fabric.toLowerCase().includes(term)));
-    }
-    if (sort === 'low') list.sort((a, b) => a.price - b.price);
-    else if (sort === 'high') list.sort((a, b) => b.price - a.price);
-    res.json(list);
-  }
-});
-
-app.get('/api/products/:id', optionalAuth, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
-
-  try {
-    const product = await db.getProductById(id);
-    if (product) {
-      // Record view in real-time
-      db.recordProductView(id, req.user ? req.user.id : null, req.ip).catch(() => { });
-      return res.json(product);
-    }
-  } catch (err) {
-    const fallback = loadFallbackProducts().find(p => p.id === id);
-    if (fallback) return res.json(fallback);
-  }
-
-  res.status(404).json({ error: 'Product not found' });
-});
-
-// Product CRUD (Admin / Curator Protected)
-app.post('/api/products', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { name, cat, type, col, price, old, fabric, desc, image, stock, c1, c2, pat, tag, sizes, colors } = req.body || {};
-    if (!name || !price) {
-      return res.status(400).json({ error: 'Garment name and active selling price are required.' });
-    }
-    const numPrice = Number(price);
-    if (isNaN(numPrice) || numPrice <= 0) {
-      return res.status(400).json({ error: 'Price must be a positive numeric value.' });
-    }
-
-    const newProduct = await db.createProduct({
-      name: name.trim(),
-      cat: cat || 'ethnic',
-      type: type || 'Suit sets',
-      col: col || 'everyday',
-      price: numPrice,
-      old: old ? Number(old) : null,
-      fabric: fabric || 'Pure handwoven textile',
-      desc: desc || '',
-      image: image || 'images/p1.jpg',
-      stock: stock != null ? Math.max(0, parseInt(stock, 10)) : 10,
-      c1: c1 || '#5B1835',
-      c2: c2 || '#C6A15B',
-      pat: pat || 'plain',
-      tag: tag || 'New Arrival',
-      sizes: sizes || ['XS', 'S', 'M', 'L', 'XL'],
-      colors: colors || [{ name: 'Primary Shade', hex: c1 || '#5B1835' }]
-    });
-    res.status(201).json(newProduct);
-  } catch (err) {
-    console.error('[API] Create product error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
-
-  try {
-    const updated = await db.updateProduct(id, req.body || {});
-    if (!updated) return res.status(404).json({ error: 'Product not found' });
-    res.json(updated);
-  } catch (err) {
-    console.error('[API] Update product error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
-
-  try {
-    const deleted = await db.deleteProduct(id);
-    if (!deleted) return res.status(404).json({ error: 'Product not found' });
-    res.json({ ok: true, message: `Product ${id} removed from atelier catalog.` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Image Upload Endpoint (Multer with Authenticated Access)
-app.post('/api/upload', authenticateToken, upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image file uploaded.' });
-  }
-  const relativePath = 'uploads/' + req.file.filename;
-  res.json({
-    ok: true,
-    url: relativePath,
-    filename: req.file.filename,
-    size: req.file.size
-  });
-});
-
-/* ==========================================================================
-   Inventory Management (Admin)
-   ========================================================================== */
-
-/* ==========================================================================
-   Real-Time Analytics & Customer Activity Intelligence (Admin)
-   ========================================================================== */
-app.get('/api/admin/analytics', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const analytics = await db.getAdminAnalytics();
-    res.json(analytics);
-  } catch (err) {
-    console.error('[API] Admin analytics error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/admin/activities', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const limit = req.query.limit || 30;
-    const type = req.query.type || null;
-    const activities = await db.getCustomerActivities(limit, type);
-    res.json(activities);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/products/:id/view', optionalAuth, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
-  try {
-    const userId = req.user ? req.user.id : null;
-    const ip = req.ip || req.connection?.remoteAddress;
-    await db.recordProductView(id, userId, ip);
-
-    const product = await db.getProductById(id);
-    if (product) {
-      db.logCustomerActivity({
-        userId,
-        userName: req.user ? req.user.name : 'Guest Patron',
-        activityType: 'product_view',
-        description: `Patron viewed garment: "${product.name}" (${product.cat === 'ethnic' ? 'Ethnic' : 'Western'})`,
-        metadata: { productId: id, name: product.name }
-      }).catch(() => { });
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/activity/cart', optionalAuth, async (req, res) => {
-  const { productId, size, color, quantity } = req.body || {};
-  if (!productId) return res.status(400).json({ error: 'Product ID required' });
-  try {
-    const product = await db.getProductById(Number(productId));
-    const userId = req.user ? req.user.id : null;
-    const userName = req.user ? req.user.name : 'Guest Patron';
-    db.logCustomerActivity({
-      userId,
-      userName,
-      activityType: 'cart_add',
-      description: `Added "${product ? product.name : 'Garment'}" (Size: ${size || 'M'}, Qty: ${quantity || 1}) to shopping bag`,
-      metadata: { productId: Number(productId), size, color, quantity }
-    }).catch(() => { });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/inventory', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const data = await db.getInventorySummary();
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/products/:id/stock', authenticateToken, requireAdmin, async (req, res) => {
-  const id = Number(req.params.id);
-  const { stock } = req.body || {};
-  if (isNaN(id) || stock == null) {
-    return res.status(400).json({ error: 'Valid product ID and stock count are required.' });
-  }
-  try {
-    const updated = await db.setProductStock(id, stock);
-    if (!updated) return res.status(404).json({ error: 'Product not found.' });
-    res.json({ ok: true, ...updated });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ==========================================================================
-   Module 3: Product Details & Reviews
-   ========================================================================== */
-app.get('/api/products/:id/reviews', async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
-
-  try {
-    const reviews = await db.getProductReviews(id);
-    res.json(reviews);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to load reviews.' });
-  }
-});
-
-app.post('/api/products/:id/reviews', optionalAuth, async (req, res) => {
-  const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
-
-  const { rating, title, comment, name } = req.body || {};
-  if (!rating || !comment) {
-    return res.status(400).json({ error: 'Rating (1-5) and review feedback are required.' });
-  }
-
-  const numRating = parseInt(rating, 10);
-  if (numRating < 1 || numRating > 5) {
-    return res.status(400).json({ error: 'Rating must be an integer between 1 and 5.' });
-  }
-
-  try {
-    const authorName = (req.user && req.user.name) || name || 'Verified Patron';
-    const userId = req.user ? req.user.id : null;
-
-    const review = await db.createProductReview({
-      productId: id,
-      userId,
-      userName: authorName,
-      rating: numRating,
-      title: title || 'Atelier Feedback',
-      comment,
-      verifiedPurchase: !!req.user
-    });
-
-    db.getProductById(id).then(p => {
-      db.logCustomerActivity({
-        userId,
-        userName: authorName,
-        activityType: 'review',
-        description: `Verified ${numRating}★ review submitted for "${p ? p.name : 'Creation'}" by ${authorName}: "${title || 'Patron Review'}"`,
-        metadata: { productId: id, rating: numRating, title }
-      }).catch(() => { });
-    }).catch(() => { });
-
-    res.status(201).json(review);
-  } catch (err) {
-    console.error('[API] Create review error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+/* ---------- Error Handling ---------- */
+app.all('/api/*', notFoundHandler);
+app.use(errorHandler);
 
 /* ==========================================================================
    Module 4: Customer Cart (Persistent Server-Side)
@@ -746,7 +265,7 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
       const qty = Math.max(1, parseInt(item.qty, 10) || 1);
       if (p.stock < qty) {
         return res.status(400).json({
-          error: `Insufficient stock for "${p.name}". Only ${p.stock} piece(s) available In Workshop.`
+          error: `Insufficient stock for "${p.name}". Only ${p.stock} piece(s) available in atelier.`
         });
       }
 
@@ -950,7 +469,7 @@ app.post('/api/orders/:id/cancel', optionalAuth, async (req, res) => {
     const order = await db.getOrderById(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found.' });
 
-    if (order.status !== 'Confirmed' && order.status !== 'In Workshop') {
+    if (order.status !== 'Confirmed' && order.status !== 'In Atelier') {
       return res.status(400).json({
         error: `Order cannot be cancelled in status "${order.status}". Dispatched orders may be returned after delivery.`
       });
