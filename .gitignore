@@ -20,6 +20,10 @@ Thumbs.db
 # Scratch and temporary testing files
 scratch/
 
+# 3D models and legacy viewers
+frontend/models/
+frontend/js/libs/
+
 # IDE and Editor settings
 .vscode/
 .idea/

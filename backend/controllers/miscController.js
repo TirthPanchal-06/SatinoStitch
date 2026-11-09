@@ -76,34 +76,71 @@ function getBanners(req, res) {
   ]);
 }
 
-function getCollections(req, res) {
+async function getCollections(req, res) {
+  let counts = { wedding: 8, festive: 4, everyday: 3, work: 3 };
+  try {
+    const dbCounts = await query('SELECT col, COUNT(*)::int AS count FROM products GROUP BY col;');
+    if (dbCounts && dbCounts.rows) {
+      dbCounts.rows.forEach(r => {
+        if (r.col) counts[r.col] = r.count;
+      });
+    }
+  } catch (e) {
+    console.warn('[Collections] Using fallback counts:', e.message);
+  }
+
   res.json([
     {
-      id: 'heritage',
-      name: 'Royal Heritage Silk',
-      tagline: 'Timeless Zardozi & Brocade',
-      desc: 'Woven in royal Varanasi atriums with pure silver and gold zari threads.',
-      image: 'images/wedding-edit.jpg',
-      itemCount: '18 Creations',
-      filter: { col: 'heritage' }
-    },
-    {
       id: 'wedding',
-      name: 'Bridal Symphony',
-      tagline: 'Magnificent Ceremonial Coutures',
-      desc: 'Bespoke bridal lehengas adorned with artisanal craftsmanship.',
-      image: 'images/p1.jpg',
-      itemCount: '12 Creations',
+      key: 'wedding',
+      name: 'Wedding Edit',
+      tagline: 'Bridal Symphony & Zardozi',
+      desc: 'Royal Banarasi silk sarees, bespoke bridal lehengas and gold zari sets.',
+      text: 'Royal Banarasi silk sarees, bespoke bridal lehengas and gold zari sets.',
+      image: 'images/wedding-edit.jpg',
+      img: 'images/wedding-edit.jpg',
+      count: counts.wedding || 8,
+      itemCount: `${counts.wedding || 8} Creations`,
       filter: { col: 'wedding' }
     },
     {
-      id: 'modern',
-      name: 'Liquid Satin & Sartorial Linen',
-      tagline: 'Refined Contemporary Western Pret',
-      desc: 'Precision tailoring meeting sumptuous drape for sophisticated wardrobes.',
-      image: 'images/p2.jpg',
-      itemCount: '15 Creations',
-      filter: { col: 'modern' }
+      id: 'festive',
+      key: 'festive',
+      name: 'Festive Wear',
+      tagline: 'Heritage Bandhani & Zari',
+      desc: 'Handcrafted bandhani, lustrous satin and antique gold artisanal craft.',
+      text: 'Handcrafted bandhani, lustrous satin and antique gold artisanal craft.',
+      image: 'images/p2_front.jpg',
+      img: 'images/p2_front.jpg',
+      count: counts.festive || 4,
+      itemCount: `${counts.festive || 4} Creations`,
+      filter: { col: 'festive' }
+    },
+    {
+      id: 'everyday',
+      key: 'everyday',
+      name: 'Everyday Cotton',
+      tagline: 'Mulmul Prints & Pure Chanderi',
+      desc: 'Breathable Mulmul hand-block prints, pure Chanderi kurtas and easy drape.',
+      text: 'Breathable Mulmul hand-block prints, pure Chanderi kurtas and easy drape.',
+      image: 'images/p5_front.jpg',
+      img: 'images/p5_front.jpg',
+      count: counts.everyday || 3,
+      itemCount: `${counts.everyday || 3} Creations`,
+      filter: { col: 'everyday' }
+    },
+    {
+      id: 'work',
+      key: 'work',
+      name: 'Work Wardrobe',
+      tagline: 'Liquid Satin & Sartorial Linen',
+      desc: 'Sartorial linen check blazers, tailored trousers and pleated crepe tailoring.',
+      text: 'Sartorial linen check blazers, tailored trousers and pleated crepe tailoring.',
+      image: 'images/p9_front.jpg',
+      img: 'images/p9_front.jpg',
+      count: counts.work || 3,
+      itemCount: `${counts.work || 3} Creations`,
+      filter: { col: 'work' }
     }
   ]);
 }

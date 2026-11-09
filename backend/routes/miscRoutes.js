@@ -17,7 +17,7 @@ router.post('/contact', miscController.submitContact);
 router.get('/types', categoryController.getTypes);
 router.get('/payment/config', orderController.getPaymentConfig);
 
-router.post('/upload', authenticateAdminToken, upload.single('image'), productController.uploadImage);
+router.post('/upload', authenticateAdminToken, upload.any(), productController.uploadImage);
 router.post('/activity/cart', optionalAuth, cartController.trackCartActivity);
 
 module.exports = router;

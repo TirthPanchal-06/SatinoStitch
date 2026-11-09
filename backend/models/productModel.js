@@ -24,6 +24,18 @@ function mapProductRow(r) {
     description: r.description,
     sizes: Array.isArray(r.sizes) ? r.sizes : (typeof r.sizes === 'string' ? JSON.parse(r.sizes || '["XS","S","M","L","XL"]') : ["XS","S","M","L","XL"]),
     colors: Array.isArray(r.colors) ? r.colors : (typeof r.colors === 'string' ? JSON.parse(r.colors || '[]') : []),
+    model3d: r.garment_model_url || r.model_3d || null,
+    model_3d: r.garment_model_url || r.model_3d || null,
+    garmentCategory: r.garment_category || null,
+    garmentModelUrl: r.garment_model_url || r.model_3d || null,
+    fabricTextureUrl: r.fabric_texture_url || null,
+    normalMapUrl: r.normal_map_url || null,
+    roughnessMapUrl: r.roughness_map_url || null,
+    colourVariants: Array.isArray(r.colour_variants) ? r.colour_variants : (typeof r.colour_variants === 'string' ? JSON.parse(r.colour_variants || '[]') : []),
+    garmentComponents: Array.isArray(r.garment_components) ? r.garment_components : (typeof r.garment_components === 'string' ? JSON.parse(r.garment_components || '[]') : []),
+    compatibleAvatarTypes: Array.isArray(r.compatible_avatar_types) ? r.compatible_avatar_types : (typeof r.compatible_avatar_types === 'string' ? JSON.parse(r.compatible_avatar_types || '["female_couture_v1"]') : ["female_couture_v1"]),
+    drapingConfiguration: r.draping_configuration ? (typeof r.draping_configuration === 'string' ? JSON.parse(r.draping_configuration) : r.draping_configuration) : {},
+    assetStatus: r.asset_status || (r.garment_model_url || r.model_3d ? 'published' : 'unavailable'),
     viewsCount: Number(r.views_count || 0),
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -90,15 +102,15 @@ async function createProduct(data) {
   const sql = `
     INSERT INTO products (
       name, cat, type, col, price, old_price, c1, c2, pat, tag, rating, reviews, stock,
-      image, images, fabric, description, sizes, colors
+      image, images, fabric, description, sizes, colors, model_3d
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-      $14, $15, $16, $17, $18, $19
+      $14, $15, $16, $17, $18, $19, $20
     ) RETURNING *;
   `;
-  const defaultSizes = data.sizes || ['XS', 'S', 'M', 'L', 'XL'];
-  const defaultColors = data.colors || (data.c1 ? [{ name: 'Primary Shade', hex: data.c1 }] : [{ name: 'Classic Gold', hex: '#C6A15B' }]);
-  const gallery = data.images || (data.image ? [data.image] : ['images/p1.jpg']);
+  const defaultSizes = Array.isArray(data.sizes) ? data.sizes : (typeof data.sizes === 'string' ? JSON.parse(data.sizes) : ['XS', 'S', 'M', 'L', 'XL']);
+  const defaultColors = Array.isArray(data.colors) ? data.colors : (typeof data.colors === 'string' ? JSON.parse(data.colors) : (data.c1 ? [{ name: 'Primary Shade', hex: data.c1 }] : [{ name: 'Classic Gold', hex: '#C6A15B' }]));
+  const gallery = Array.isArray(data.images) ? data.images : (typeof data.images === 'string' ? JSON.parse(data.images) : (data.image ? [data.image] : ['images/p1.jpg']));
 
   const res = await query(sql, [
     data.name,
@@ -119,7 +131,8 @@ async function createProduct(data) {
     data.fabric || 'Pure Handloom Silk',
     data.desc || data.description || '',
     JSON.stringify(defaultSizes),
-    JSON.stringify(defaultColors)
+    JSON.stringify(defaultColors),
+    data.model3d || data.model_3d || null
   ]);
   return mapProductRow(res.rows[0]);
 }
@@ -127,6 +140,9 @@ async function createProduct(data) {
 async function updateProduct(id, data) {
   const current = await getProductById(id);
   if (!current) return null;
+
+  const hasModel3d = ('model3d' in data) || ('model_3d' in data) || ('garmentModelUrl' in data);
+  const targetModel3d = hasModel3d ? (data.garmentModelUrl || data.model3d || data.model_3d || null) : current.model3d;
 
   const sql = `
     UPDATE products
@@ -147,6 +163,15 @@ async function updateProduct(id, data) {
         description = COALESCE($16, description),
         sizes = COALESCE($17, sizes),
         colors = COALESCE($18, colors),
+        model_3d = $19,
+        garment_category = COALESCE($20, garment_category),
+        garment_model_url = $19,
+        fabric_texture_url = COALESCE($21, fabric_texture_url),
+        colour_variants = COALESCE($22, colour_variants),
+        garment_components = COALESCE($23, garment_components),
+        compatible_avatar_types = COALESCE($24, compatible_avatar_types),
+        draping_configuration = COALESCE($25, draping_configuration),
+        asset_status = COALESCE($26, asset_status),
         updated_at = NOW()
     WHERE id = $1
     RETURNING *;
@@ -166,11 +191,19 @@ async function updateProduct(id, data) {
     data.tag,
     data.stock !== undefined ? parseInt(data.stock, 10) : undefined,
     data.image,
-    data.images ? JSON.stringify(data.images) : undefined,
+    data.images ? (typeof data.images === 'string' ? data.images : JSON.stringify(data.images)) : undefined,
     data.fabric,
     data.desc || data.description,
     data.sizes ? JSON.stringify(data.sizes) : undefined,
-    data.colors ? JSON.stringify(data.colors) : undefined
+    data.colors ? JSON.stringify(data.colors) : undefined,
+    targetModel3d,
+    data.garmentCategory || data.category || undefined,
+    data.fabricTextureUrl || undefined,
+    data.colourVariants ? JSON.stringify(data.colourVariants) : undefined,
+    data.garmentComponents ? JSON.stringify(data.garmentComponents) : undefined,
+    data.compatibleAvatarTypes ? JSON.stringify(data.compatibleAvatarTypes) : undefined,
+    data.drapingConfiguration ? JSON.stringify(data.drapingConfiguration) : undefined,
+    data.assetStatus || (targetModel3d ? 'published' : (data.assetStatus !== undefined ? data.assetStatus : undefined))
   ]);
   return mapProductRow(res.rows[0]);
 }

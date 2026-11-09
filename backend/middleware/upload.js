@@ -13,24 +13,25 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueName = `garment-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const prefix = ['.glb', '.gltf', '.usdz'].includes(ext) ? 'model3d' : 'garment';
+    const uniqueName = `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
     cb(null, uniqueName);
   }
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+  const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.glb', '.gltf', '.usdz'];
   const ext = path.extname(file.originalname).toLowerCase();
   if (allowed.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid image format. Only JPG, PNG, and WebP are supported.'), false);
+    cb(new Error('Invalid file format. Supported: JPG, PNG, WebP, GLB, GLTF, USDZ.'), false);
   }
 };
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  limits: { fileSize: 30 * 1024 * 1024 }, // 30 MB max for high-res 3D assets
   fileFilter
 });
 

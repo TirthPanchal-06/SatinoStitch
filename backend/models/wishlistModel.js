@@ -13,11 +13,15 @@ async function getUserWishlist(userId) {
     ORDER BY w.created_at DESC;
   `;
   const res = await query(sql, [userId]);
-  return res.rows.map(r => ({
-    wishlistId: r.wishlist_id,
-    savedAt: r.saved_at,
-    product: mapProductRow(r)
-  }));
+  return res.rows.map(r => {
+    const prod = mapProductRow(r);
+    return {
+      ...prod,
+      wishlistId: r.wishlist_id,
+      savedAt: r.saved_at,
+      product: prod
+    };
+  });
 }
 
 async function addToWishlist(userId, productId) {

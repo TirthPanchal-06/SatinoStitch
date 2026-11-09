@@ -178,15 +178,21 @@ async function recordView(req, res) {
 }
 
 function uploadImage(req, res) {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image file uploaded.' });
+  const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : []);
+  if (!files.length) {
+    return res.status(400).json({ error: 'No asset file uploaded.' });
   }
-  const relativePath = `uploads/${req.file.filename}`;
+  const uploaded = files.map(f => ({
+    filePath: `uploads/${f.filename}`,
+    url: `uploads/${f.filename}`,
+    filename: f.filename
+  }));
   res.json({
-    message: 'Couture photograph successfully stored.',
-    filePath: relativePath,
-    url: relativePath,
-    filename: req.file.filename
+    message: `${uploaded.length} atelier digital asset(s) successfully stored.`,
+    filePath: uploaded[0].filePath,
+    url: uploaded[0].url,
+    files: uploaded,
+    urls: uploaded.map(u => u.url)
   });
 }
 
