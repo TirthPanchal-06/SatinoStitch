@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Complete Catalogue — SATINOSTITCH</title>
+<title>All Creations — SATINOSTITCH Haute Couture &amp; Pret</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600&family=Marcellus&display=swap" rel="stylesheet">
@@ -13,59 +13,185 @@
 <body data-page="shop">
 <div id="site-header"></div>
 <main>
-<div class="wrap page-title" style="padding:2.5rem 0 1rem">
-  <span class="hero-pill">Handcrafted Catalog</span>
-  <h1>All Creations</h1>
-</div>
-<div class="wrap shop">
-  <aside class="filters-box" aria-label="Filters">
-    <div class="filters-title">
-      <h3>Filters</h3>
-      <button class="btn ghost sm" id="reset-top" style="padding:0.2rem 0.6rem;font-size:0.75rem">Reset</button>
+  <!-- Shop Header & Quick-Filter Strip -->
+  <section class="wrap page-title shop-page-header">
+    <span class="hero-pill">Handcrafted Catalog</span>
+    <h1>All Creations</h1>
+    <p class="muted shop-header-subtitle">Explore pure Banarasi silks, handloom bridal trousseaus, and precision-tailored pret. Use the quick tabs or sidebar filters below to easily access what you desire.</p>
+    
+    <!-- Quick-Select Visual Pills Bar -->
+    <div class="quick-filters-container" id="quick-filters-bar" role="tablist" aria-label="Quick category filters">
+      <button type="button" class="quick-filter-chip active" data-qf="all" role="tab">
+        <span class="qf-icon">✦</span> All Creations (<span id="qf-count-all">13</span>)
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="cat:ethnic" role="tab">
+        <span class="qf-icon">👑</span> Ethnic Couture
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="col:wedding" role="tab">
+        <span class="qf-icon">👰</span> Bridal Trousseau
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="cat:western" role="tab">
+        <span class="qf-icon">💎</span> Western Pret
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="col:festive" role="tab">
+        <span class="qf-icon">✨</span> Festive Celebrations
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="col:everyday" role="tab">
+        <span class="qf-icon">🕊️</span> Everyday Pret
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="col:work" role="tab">
+        <span class="qf-icon">💼</span> Boardroom Suiting
+      </button>
+      <button type="button" class="quick-filter-chip" data-qf="tag:Bestseller" role="tab">
+        <span class="qf-icon">🔥</span> Bestsellers
+      </button>
     </div>
-    <div class="field">
-      <label for="f-search">Search Catalogue</label>
-      <input id="f-search" type="search" placeholder="e.g. Banarasi, silk, blazer, lehenga">
+  </section>
+
+  <!-- Mobile Filter & Sort Bar -->
+  <div class="wrap mobile-filter-bar">
+    <button type="button" class="mobile-filter-trigger-btn" id="mobile-filter-toggle">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+      <span>Filter &amp; Refine</span>
+      <span class="mobile-filter-badge" id="mobile-filter-badge" style="display:none">0</span>
+    </button>
+    <div class="mobile-sort-wrap">
+      <select id="f-sort-mobile" class="mobile-sort-select" aria-label="Sort creations">
+        <option value="new">Featured &amp; Newest</option>
+        <option value="low">Price, Low to High</option>
+        <option value="high">Price, High to Low</option>
+        <option value="rating">Patron Rating</option>
+      </select>
     </div>
-    <div class="field">
-      <label>Category</label>
-      <div class="chips">
-        <button data-cat="all">All</button>
-        <button data-cat="ethnic">Ethnic</button>
-        <button data-cat="western">Western</button>
-      </div>
-    </div>
-    <div class="field">
-      <label for="f-type">Silhouette / Type</label>
-      <select id="f-type"></select>
-    </div>
-    <div class="field">
-      <label for="f-price">Price Ceiling</label>
-      <input id="f-price" type="range" min="1500" max="15000" step="500" value="15000">
-      <div style="display:flex;justify-content:space-between;margin-top:0.3rem">
-        <span class="muted" style="font-size:0.8rem">₹1,500</span>
-        <span id="f-price-out" class="card-price" style="font-size:0.95rem">Up to ₹15,000</span>
-      </div>
-    </div>
-  </aside>
-  <div>
-    <div class="shop-bar">
-      <p style="display:flex;align-items:center;gap:0.8rem">
-        <span id="shop-count" style="font-weight:600"></span>
-        <button class="btn ghost sm" id="col-clear" hidden style="padding:.2rem .8rem;font-size:0.8rem">Clear collection filter</button>
-      </p>
-      <div style="display:flex;align-items:center;gap:0.6rem">
-        <label for="f-sort" style="font-size:0.9rem;white-space:nowrap" class="muted">Sort by:</label>
-        <select id="f-sort" style="width:auto;padding:0.5rem 0.8rem" aria-label="Sort">
-          <option value="new">Featured &amp; Newest</option>
-          <option value="low">Price, low to high</option>
-          <option value="high">Price, high to low</option>
-        </select>
-      </div>
-    </div>
-    <div class="grid" id="grid"></div>
   </div>
-</div>
+
+  <div class="wrap shop">
+    <!-- Filter Drawer Backdrop for Mobile -->
+    <div class="filter-backdrop" id="filter-backdrop"></div>
+
+    <!-- Filter Sidebar Panel -->
+    <aside class="filters-box" id="filters-box" aria-label="Filters">
+      <div class="filters-title">
+        <div style="display:flex;align-items:center;gap:0.6rem">
+          <h3>Filters</h3>
+          <span class="filter-active-count-badge" id="active-count-badge" style="display:none">0 active</span>
+        </div>
+        <button type="button" class="btn ghost sm" id="reset-top" style="padding:0.25rem 0.65rem;font-size:0.76rem">Reset All</button>
+      </div>
+
+      <!-- Live Search with instant clear -->
+      <div class="field">
+        <label for="f-search">Search Catalogue</label>
+        <div class="filter-search-wrap">
+          <svg class="filter-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input id="f-search" type="search" placeholder="e.g. Banarasi, silk, blazer, lehenga" autocomplete="off">
+          <button type="button" id="f-search-clear" class="filter-search-clear" style="display:none" aria-label="Clear search">✕</button>
+        </div>
+      </div>
+
+      <!-- Tradition / Primary Category -->
+      <div class="field">
+        <label>Tradition / Category</label>
+        <div class="chips" id="cat-chips">
+          <button type="button" data-cat="all" class="chip-btn active">All</button>
+          <button type="button" data-cat="ethnic" class="chip-btn">Ethnic Couture</button>
+          <button type="button" data-cat="western" class="chip-btn">Western Pret</button>
+        </div>
+      </div>
+
+      <!-- Occasion / Curated Edits -->
+      <div class="field">
+        <label>Occasion &amp; Collection</label>
+        <div class="chips" id="col-chips">
+          <button type="button" data-col="all" class="chip-btn active">All Occasions</button>
+          <button type="button" data-col="wedding" class="chip-btn">Bridal &amp; Wedding</button>
+          <button type="button" data-col="festive" class="chip-btn">Festive Celebrations</button>
+          <button type="button" data-col="everyday" class="chip-btn">Everyday Pret</button>
+          <button type="button" data-col="work" class="chip-btn">Boardroom / Work</button>
+        </div>
+      </div>
+
+      <!-- Silhouette / Garment Type -->
+      <div class="field">
+        <label>Silhouette / Garment Type</label>
+        <div class="chips type-chips" id="type-chips">
+          <!-- Dynamically populated chips with counts -->
+        </div>
+        <select id="f-type" class="sr-only" aria-label="Silhouette / Type"></select>
+      </div>
+
+      <!-- Fabric & Textile -->
+      <div class="field">
+        <label>Artisanal Textile &amp; Fabric</label>
+        <div class="chips fabric-chips" id="fabric-chips">
+          <!-- Dynamically populated fabric chips -->
+        </div>
+      </div>
+
+      <!-- Price Ceiling & Presets -->
+      <div class="field">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem">
+          <label for="f-price" style="margin-bottom:0">Price Ceiling</label>
+          <span id="f-price-out" class="card-price" style="font-size:0.95rem;color:var(--wine);font-weight:700">Up to ₹15,000</span>
+        </div>
+        <input id="f-price" type="range" min="1500" max="15000" step="500" value="15000">
+        <div style="display:flex;justify-content:space-between;margin-top:0.25rem;font-size:0.78rem;color:var(--muted)">
+          <span>₹1,500</span>
+          <span>₹15,000</span>
+        </div>
+        <!-- Quick Price Brackets -->
+        <div class="price-presets-row" id="price-presets">
+          <button type="button" class="preset-price-btn active" data-price="15000">All</button>
+          <button type="button" class="preset-price-btn" data-price="4000">&lt; ₹4k</button>
+          <button type="button" class="preset-price-btn" data-price="8000">&lt; ₹8k</button>
+          <button type="button" class="preset-price-btn" data-price="12000">&lt; ₹12k</button>
+        </div>
+      </div>
+
+      <!-- Special Curations -->
+      <div class="field">
+        <label>Curations &amp; Availability</label>
+        <div class="chips" id="tag-chips">
+          <button type="button" data-tag="all" class="chip-btn active">All</button>
+          <button type="button" data-tag="bestseller" class="chip-btn">★ Bestsellers</button>
+          <button type="button" data-tag="instock" class="chip-btn">✓ In Stock Only</button>
+        </div>
+      </div>
+
+      <!-- Mobile drawer bottom apply button -->
+      <div class="mobile-drawer-footer">
+        <button type="button" class="btn gold block" id="mobile-apply-btn">Apply Filters &amp; View Creations</button>
+      </div>
+    </aside>
+
+    <!-- Main Results Column -->
+    <div class="shop-content-area">
+      <div class="shop-bar">
+        <div class="shop-bar-left">
+          <span id="shop-count" style="font-weight:600;font-size:1.05rem;color:var(--wine)"></span>
+          <button class="btn ghost sm" id="col-clear" hidden style="padding:.2rem .8rem;font-size:0.8rem">Clear Filters</button>
+        </div>
+        <div class="shop-bar-right" style="display:flex;align-items:center;gap:0.6rem">
+          <label for="f-sort" style="font-size:0.9rem;white-space:nowrap" class="muted">Sort by:</label>
+          <select id="f-sort" style="width:auto;padding:0.45rem 0.85rem" aria-label="Sort">
+            <option value="new">Featured &amp; Newest</option>
+            <option value="low">Price, Low to High</option>
+            <option value="high">Price, High to Low</option>
+            <option value="rating">Patron Rating</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Active Filter Pills Strip -->
+      <div class="active-filters-strip" id="active-filters-strip" style="display:none">
+        <span class="active-filters-label">Active:</span>
+        <div class="active-chips-wrap" id="active-chips-container"></div>
+        <button type="button" class="clear-all-link" id="clear-all-active-btn">Clear All</button>
+      </div>
+
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
 </main>
 <div id="site-footer"></div>
 <div id="quick-view-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true"></div>

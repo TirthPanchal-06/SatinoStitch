@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Journal — Haute Couture &amp; Sartorial Chronicles — SATINOSTITCH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600&family=Marcellus&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="images/emblem.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="journal">
+<div id="site-header"></div>
+
+<main>
+  <!-- Journal Page Header -->
+  <section class="wrap journal-hero" style="padding: 3.5rem 0 2rem; text-align: center;">
+    <span class="hero-pill">Atelier Gazette &amp; Sartorial Culture</span>
+    <h1 style="font-family: var(--serif); font-size: 2.8rem; margin: 0.8rem 0 1rem; color: var(--wine-dark); letter-spacing: 0.02em;">The SatinoStitch Journal</h1>
+    <p class="muted" style="max-width: 680px; margin: 0 auto; font-size: 1.1rem; line-height: 1.8;">
+      Chronicles of ancestral craftsmanship, master Banarasi handlooms, textile architecture, and contemporary sartorial dialogues from our master artisans and couturiers.
+    </p>
+
+    <!-- Category Filter Chips -->
+    <div class="journal-filter-chips" style="display: flex; justify-content: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 2.2rem;">
+      <button class="journal-filter-btn active" data-filter="all" type="button" style="background: var(--wine); color: #FFFFFF; border: 1px solid var(--wine); padding: 0.45rem 1.2rem; border-radius: 999px; font: 500 0.82rem var(--sans); letter-spacing: 0.04em; cursor: pointer; transition: all 0.25s ease;">All Chronicles</button>
+      <button class="journal-filter-btn" data-filter="craft" type="button" style="background: var(--ivory-soft); color: var(--wine-dark); border: 1px solid rgba(198, 161, 91, 0.35); padding: 0.45rem 1.2rem; border-radius: 999px; font: 500 0.82rem var(--sans); letter-spacing: 0.04em; cursor: pointer; transition: all 0.25s ease;">Artisanal Craft</button>
+      <button class="journal-filter-btn" data-filter="textile" type="button" style="background: var(--ivory-soft); color: var(--wine-dark); border: 1px solid rgba(198, 161, 91, 0.35); padding: 0.45rem 1.2rem; border-radius: 999px; font: 500 0.82rem var(--sans); letter-spacing: 0.04em; cursor: pointer; transition: all 0.25s ease;">Textile Philosophy</button>
+      <button class="journal-filter-btn" data-filter="bridal" type="button" style="background: var(--ivory-soft); color: var(--wine-dark); border: 1px solid rgba(198, 161, 91, 0.35); padding: 0.45rem 1.2rem; border-radius: 999px; font: 500 0.82rem var(--sans); letter-spacing: 0.04em; cursor: pointer; transition: all 0.25s ease;">Bridal Couture</button>
+      <button class="journal-filter-btn" data-filter="styling" type="button" style="background: var(--ivory-soft); color: var(--wine-dark); border: 1px solid rgba(198, 161, 91, 0.35); padding: 0.45rem 1.2rem; border-radius: 999px; font: 500 0.82rem var(--sans); letter-spacing: 0.04em; cursor: pointer; transition: all 0.25s ease;">Sartorial Styling</button>
+    </div>
+  </section>
+
+  <!-- Featured Lead Story -->
+  <section class="wrap" style="padding-bottom: 3.5rem;">
+    <div class="journal-featured-card" style="background: var(--ivory-soft); border-radius: var(--radius-lg); border: 2px solid var(--gold); overflow: hidden; box-shadow: var(--shadow-lg); display: grid; grid-template-columns: 1.15fr 1fr; gap: 0;">
+      <div style="aspect-ratio: 16/11; overflow: hidden; position: relative;">
+        <img src="images/hero-banner.jpg" alt="Artisans performing Zardozi hand embroidery" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease;">
+        <span style="position: absolute; top: 1.2rem; left: 1.2rem; background: rgba(45, 5, 11, 0.92); color: var(--gold-light); font-size: 0.76rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.4rem 0.9rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.5); font-weight: 600;">Lead Editorial • 7 Min Read</span>
+      </div>
+      <div style="padding: 3rem 2.5rem; display: flex; flex-direction: column; justify-content: center;">
+        <span style="color: var(--gold); font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;">Atelier Heritage Chronicle</span>
+        <h2 style="font-family: var(--serif); font-size: 2.1rem; line-height: 1.3; color: var(--wine-dark); margin: 0.6rem 0 1rem;">The Alchemy of Zardozi: 400 Hours in Pure Bullion Wire &amp; Seed Pearls</h2>
+        <p class="muted" style="font-size: 1.02rem; line-height: 1.8; margin-bottom: 1.6rem;">
+          Inside our Varanasi atelier, 4th-generation master embroiderers revive antique Mughal court drapes using beaten silver-gilt wire, genuine ari needles, and hand-strung basra pearls—crafting heirloom lehengas designed to transcend decades.
+        </p>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: auto;">
+          <div style="font-size: 0.84rem; color: var(--esp-light);">
+            <strong>By SatinoStitch Master Couturiers</strong> • Autumn/Winter Edit
+          </div>
+          <button class="btn gold read-article-btn" data-article="zardozi" type="button">Read Full Chronicle &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Editorial Articles Grid -->
+  <section class="wrap" style="padding-bottom: 5rem;">
+    <div class="journal-grid" id="journal-posts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2.2rem;">
+      
+      <!-- Article 1: Silk Architecture -->
+      <article class="journal-card" data-category="textile" style="background: var(--ivory-soft); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(198, 161, 91, 0.28); box-shadow: var(--shadow); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column;">
+        <div style="aspect-ratio: 16/10; overflow: hidden; position: relative;">
+          <img src="images/wedding-edit.jpg" alt="Banarasi and Mulberry silk weaves" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+          <span style="position: absolute; top: 1rem; left: 1rem; background: rgba(58, 11, 20, 0.88); color: var(--gold-light); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.4);">Textile Philosophy • 4 Min</span>
+        </div>
+        <div style="padding: 1.8rem; display: flex; flex-direction: column; flex: 1;">
+          <h3 style="font-family: var(--serif); font-size: 1.35rem; margin-bottom: 0.6rem; color: var(--wine-dark); line-height: 1.4;">Mulberry &amp; Chanderi: The Architecture of Pure Silk</h3>
+          <p class="muted" style="font-size: 0.92rem; line-height: 1.7; margin-bottom: 1.4rem;">
+            Unraveling why our Silk Mark certified textiles maintain their fluid lustre and structural drape across generations of family celebrations.
+          </p>
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="shop.html?category=ethnic" class="btn gold sm" style="text-decoration:none">View Silk Weaves &rarr;</a>
+            <button class="tool-link read-article-btn" data-article="silk" type="button" style="color:var(--wine);font-weight:600;font-size:0.85rem">Read Story</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- Article 2: Cross Cultural Styling -->
+      <article class="journal-card" data-category="styling" style="background: var(--ivory-soft); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(198, 161, 91, 0.28); box-shadow: var(--shadow); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column;">
+        <div style="aspect-ratio: 16/10; overflow: hidden; position: relative;">
+          <img src="images/p1.jpg" alt="Modern fluid drape and structured blazer" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+          <span style="position: absolute; top: 1rem; left: 1rem; background: rgba(58, 11, 20, 0.88); color: var(--gold-light); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.4);">Sartorial Styling • 5 Min</span>
+        </div>
+        <div style="padding: 1.8rem; display: flex; flex-direction: column; flex: 1;">
+          <h3 style="font-family: var(--serif); font-size: 1.35rem; margin-bottom: 0.6rem; color: var(--wine-dark); line-height: 1.4;">The Modern Drape: From Royal Gala to Cosmopolitan Soirée</h3>
+          <p class="muted" style="font-size: 0.92rem; line-height: 1.7; margin-bottom: 1.4rem;">
+            Pairing sculpted Italian wool blazers with liquid satin sarees: an atelier guide to effortless cross-cultural styling.
+          </p>
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="shop.html?category=western" class="btn gold sm" style="text-decoration:none">Discover The Edit &rarr;</a>
+            <button class="tool-link read-article-btn" data-article="drape" type="button" style="color:var(--wine);font-weight:600;font-size:0.85rem">Read Story</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- Article 3: 16-Kali Precision -->
+      <article class="journal-card" data-category="bridal" style="background: var(--ivory-soft); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(198, 161, 91, 0.28); box-shadow: var(--shadow); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column;">
+        <div style="aspect-ratio: 16/10; overflow: hidden; position: relative;">
+          <img src="images/p4.jpg" alt="16-kali bridal lehenga architectural flare" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+          <span style="position: absolute; top: 1rem; left: 1rem; background: rgba(58, 11, 20, 0.88); color: var(--gold-light); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.4);">Bridal Couture • 6 Min</span>
+        </div>
+        <div style="padding: 1.8rem; display: flex; flex-direction: column; flex: 1;">
+          <h3 style="font-family: var(--serif); font-size: 1.35rem; margin-bottom: 0.6rem; color: var(--wine-dark); line-height: 1.4;">The 16-Kali Silhouette: Mathematical Precision in Bridal Architecture</h3>
+          <p class="muted" style="font-size: 0.92rem; line-height: 1.7; margin-bottom: 1.4rem;">
+            Every panel cut at a tapered angle to create a continuous 360-degree radial flare without weight concentration at the waistline.
+          </p>
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="shop.html" class="btn gold sm" style="text-decoration:none">View Lehengas &rarr;</a>
+            <button class="tool-link read-article-btn" data-article="kali" type="button" style="color:var(--wine);font-weight:600;font-size:0.85rem">Read Story</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- Article 4: The Dual Wardrobe -->
+      <article class="journal-card" data-category="craft" style="background: var(--ivory-soft); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(198, 161, 91, 0.28); box-shadow: var(--shadow); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column;">
+        <div style="aspect-ratio: 16/10; overflow: hidden; position: relative;">
+          <img src="images/p7.jpg" alt="Liquid satin drape and structured suit" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+          <span style="position: absolute; top: 1rem; left: 1rem; background: rgba(58, 11, 20, 0.88); color: var(--gold-light); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.4);">Artisanal Craft • 5 Min</span>
+        </div>
+        <div style="padding: 1.8rem; display: flex; flex-direction: column; flex: 1;">
+          <h3 style="font-family: var(--serif); font-size: 1.35rem; margin-bottom: 0.6rem; color: var(--wine-dark); line-height: 1.4;">Liquid Satin &amp; Italian Tailoring: The Dual Wardrobe Conviction</h3>
+          <p class="muted" style="font-size: 0.92rem; line-height: 1.7; margin-bottom: 1.4rem;">
+            Why the modern discerning wardrobe gracefully unites ancestral Banarasi pit loom weaves with sharp, sand-washed European suiting.
+          </p>
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="shop.html" class="btn gold sm" style="text-decoration:none">Explore Tailoring &rarr;</a>
+            <button class="tool-link read-article-btn" data-article="satin" type="button" style="color:var(--wine);font-weight:600;font-size:0.85rem">Read Story</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- Article 5: Botanical Dye Palette -->
+      <article class="journal-card" data-category="craft" style="background: var(--ivory-soft); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(198, 161, 91, 0.28); box-shadow: var(--shadow); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column;">
+        <div style="aspect-ratio: 16/10; overflow: hidden; position: relative;">
+          <img src="images/p10.jpg" alt="Natural botanical dyeing and handloom yarns" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+          <span style="position: absolute; top: 1rem; left: 1rem; background: rgba(58, 11, 20, 0.88); color: var(--gold-light); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.4);">Artisanal Craft • 4 Min</span>
+        </div>
+        <div style="padding: 1.8rem; display: flex; flex-direction: column; flex: 1;">
+          <h3 style="font-family: var(--serif); font-size: 1.35rem; margin-bottom: 0.6rem; color: var(--wine-dark); line-height: 1.4;">The Natural Dye Palette: Madder Root, Indigo, and Raw Turmeric</h3>
+          <p class="muted" style="font-size: 0.92rem; line-height: 1.7; margin-bottom: 1.4rem;">
+            How botanical dye vats yield earthy crimson and deep indigo tones that mellow gracefully with age rather than fading under natural sunlight.
+          </p>
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="shop.html" class="btn gold sm" style="text-decoration:none">View Pure Silks &rarr;</a>
+            <button class="tool-link read-article-btn" data-article="dyes" type="button" style="color:var(--wine);font-weight:600;font-size:0.85rem">Read Story</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- Article 6: Heirloom Care -->
+      <article class="journal-card" data-category="textile" style="background: var(--ivory-soft); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid rgba(198, 161, 91, 0.28); box-shadow: var(--shadow); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column;">
+        <div style="aspect-ratio: 16/10; overflow: hidden; position: relative;">
+          <img src="images/p6.jpg" alt="Heirloom silk preservation and muslin wrapping" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+          <span style="position: absolute; top: 1rem; left: 1rem; background: rgba(58, 11, 20, 0.88); color: var(--gold-light); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.35rem 0.75rem; border-radius: 20px; border: 1px solid rgba(198, 161, 91, 0.4);">Textile Philosophy • 3 Min</span>
+        </div>
+        <div style="padding: 1.8rem; display: flex; flex-direction: column; flex: 1;">
+          <h3 style="font-family: var(--serif); font-size: 1.35rem; margin-bottom: 0.6rem; color: var(--wine-dark); line-height: 1.4;">Heirloom Care: Preserving Handloom Silks for Generations</h3>
+          <p class="muted" style="font-size: 0.92rem; line-height: 1.7; margin-bottom: 1.4rem;">
+            Muslin wrapping, natural clove sachets, and zero-compression hanging: essential atelier practices to safeguard your heirloom trousseau.
+          </p>
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="shop.html" class="btn gold sm" style="text-decoration:none">View Heritage Collection &rarr;</a>
+            <button class="tool-link read-article-btn" data-article="care" type="button" style="color:var(--wine);font-weight:600;font-size:0.85rem">Read Story</button>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- Editorial Newsletter Callout -->
+  <section class="wrap" style="padding-bottom: 5.5rem;">
+    <div style="background: linear-gradient(135deg, #2D050B 0%, #3B0912 50%, #200307 100%); border-radius: var(--radius-lg); border: 1px solid var(--gold); padding: 3.5rem 2.5rem; text-align: center; color: #FFFFFF; box-shadow: var(--shadow-lg);">
+      <span class="hero-pill" style="border-color: rgba(198, 161, 91, 0.5); color: var(--gold-light);">Privileged Atelier Dispatches</span>
+      <h2 style="font-family: var(--serif); font-size: 2.2rem; margin: 0.8rem 0 0.8rem; color: #FFFFFF;">Subscribe to The SatinoStitch Journal</h2>
+      <p style="color: var(--gold-pale); max-width: 600px; margin: 0 auto 1.8rem; line-height: 1.8; font-size: 1.05rem;">
+        Receive seasonal essays on handloom preservation, runway debuts, private trunk show invitations, and behind-the-scenes insights directly from our master weavers.
+      </p>
+      <form class="newsletter-form" style="max-width: 500px; margin: 0 auto; display: flex; gap: 0.5rem;" onsubmit="event.preventDefault(); toast('Thank you for subscribing to The SatinoStitch Journal.'); this.reset();">
+        <input type="email" required placeholder="Enter your patron email" style="flex:1; padding: 0.75rem 1.2rem; border-radius: 999px; border: 1px solid rgba(198, 161, 91, 0.5); background: rgba(255, 255, 255, 0.1); color: #FFFFFF; font: inherit;">
+        <button class="btn gold" type="submit" style="white-space: nowrap;">Join Gazette</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<!-- Interactive Article Reader Modal -->
+<div id="journal-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width: 720px; max-height: 85vh; overflow-y: auto; background: var(--ivory-soft); border: 2px solid var(--gold); border-radius: var(--radius-lg); padding: 2.5rem; position: relative;">
+    <button class="modal-close-btn" id="close-journal-modal" style="position: absolute; top: 1.2rem; right: 1.2rem; background: none; border: none; font-size: 1.6rem; color: var(--wine); cursor: pointer;" aria-label="Close story">&times;</button>
+    <div id="journal-modal-body">
+      <!-- Injected via JavaScript -->
+    </div>
+  </div>
+</div>
+
+<div id="site-footer"></div>
+<script src="js/app.js"></script>
+</body>
+</html>
+
