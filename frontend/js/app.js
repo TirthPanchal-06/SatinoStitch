@@ -306,7 +306,6 @@
               </select>
               <span>
                 ${customer ? `<a href="login.html" style="color:var(--gold-light);font-weight:500">My Account (${esc(customer.name.split(' ')[0])})</a>` : `<a href="login.html" style="color:var(--gold-light)">Sign In</a>`}
-                ${admin ? `<a href="admin.html" style="color:var(--gold);font-weight:600;margin-left:0.8rem;background:rgba(198,161,91,0.18);padding:0.2rem 0.55rem;border-radius:4px;border:1px solid rgba(198,161,91,0.3)" title="Open Atelier Management">Atelier Admin &rarr;</a>` : ''}
               </span>
             </div>
           </div>
