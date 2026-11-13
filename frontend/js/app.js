@@ -647,24 +647,34 @@
     const siteHeader = $('#site-header');
     if (!siteHeader) return;
 
-    let ticking = false;
-    const onScroll = () => {
-      const scrollY = window.scrollY || window.pageYOffset;
-      if (scrollY > 30) {
-        siteHeader.classList.add('is-scrolled');
-      } else {
-        siteHeader.classList.remove('is-scrolled');
+    // Dynamically measure actual announcement bar height to keep CSS sticky offset exact
+    const syncAnnouncementHeight = () => {
+      const bar = siteHeader.querySelector('.announcement-bar');
+      if (bar) {
+        const h = bar.offsetHeight;
+        if (h > 0) {
+          document.documentElement.style.setProperty('--announcement-height', `${h}px`);
+        }
       }
-      ticking = false;
     };
 
-    window.addEventListener('scroll', () => {
-      if (!ticking) {
-        requestAnimationFrame(onScroll);
-        ticking = true;
-      }
-    }, { passive: true });
+    syncAnnouncementHeight();
+    window.addEventListener('resize', syncAnnouncementHeight, { passive: true });
 
+    let isScrolled = false;
+    const onScroll = () => {
+      const scrollY = window.scrollY || window.pageYOffset;
+      // Refined hysteresis threshold: active above 50px, inactive below 15px
+      if (!isScrolled && scrollY > 50) {
+        isScrolled = true;
+        siteHeader.classList.add('is-scrolled');
+      } else if (isScrolled && scrollY < 15) {
+        isScrolled = false;
+        siteHeader.classList.remove('is-scrolled');
+      }
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
     // Initial run
     onScroll();
 
