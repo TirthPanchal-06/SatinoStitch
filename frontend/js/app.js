@@ -1098,6 +1098,20 @@
       </article>`;
   }
 
+  // AI Browsing History Tracking
+  function recordBrowsingHistory(productId) {
+    if (!productId) return;
+    try {
+      const pId = Number(productId);
+      if (isNaN(pId)) return;
+      const hist = JSON.parse(localStorage.getItem('ss_browsing_history') || '[]');
+      const filtered = [pId, ...hist.filter(x => x !== pId)].slice(0, 30);
+      localStorage.setItem('ss_browsing_history', JSON.stringify(filtered));
+      fetch(`/api/products/${pId}/view`, { method: 'POST' }).catch(() => {});
+    } catch {}
+  }
+  window.recordBrowsingHistory = recordBrowsingHistory;
+
   // Quick view modal dialog
   async function openQuickView(id) {
     let p = byId(id);
@@ -1115,14 +1129,8 @@
     if (!p) return;
     window._qvProductId = p.id;
 
-    // Track product view in analytics
-    fetch(`/api/products/${p.id}/view`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(db.token() ? { 'Authorization': `Bearer ${db.token()}` } : {})
-      }
-    }).catch(() => {});
+    // Track product view in analytics & AI browsing history
+    recordBrowsingHistory(p.id);
 
     const modal = $('#quick-view-modal');
     if (!modal) return;
@@ -1403,24 +1411,333 @@
         };
       }
 
-      // 2. Style & occasion concierge matcher
-      const matcherGrid = $('#matcher-grid');
+      // 2. AI-Powered Atelier Stylist & Outfit Recommender
+      const outfitsContainer = $('#ai-outfits-container') || $('#matcher-grid');
       const matcherChips = $$('#matcher-options .matcher-chip');
-      
-      const renderMatcher = (mood) => {
-        matcherChips.forEach(c => c.classList.toggle('active', c.dataset.mood === mood));
-        let matches = PRODUCTS.filter(p => p.col === mood);
-        if (!matches.length) matches = PRODUCTS.filter(p => p.cat === 'ethnic').slice(0, 4);
-        if (matcherGrid) {
-          matcherGrid.innerHTML = matches.map(card).join('');
+      const aiStatusEl = $('#ai-taste-status');
+      let activeMood = '';
+
+      const getClientHistory = () => {
+        try {
+          return JSON.parse(localStorage.getItem('ss_browsing_history') || '[]');
+        } catch { return []; }
+      };
+
+      const getClientPreferences = () => {
+        try {
+          return JSON.parse(localStorage.getItem('ss_ai_style_preferences') || 'null');
+        } catch { return null; }
+      };
+
+      const setClientPreferences = (p) => {
+        localStorage.setItem('ss_ai_style_preferences', JSON.stringify(p));
+      };
+
+      const loadAIOutfits = async (mood = '') => {
+        activeMood = mood;
+        matcherChips.forEach(c => c.classList.toggle('active', (c.dataset.mood || '') === mood));
+
+        if (outfitsContainer) {
+          outfitsContainer.innerHTML = `
+            <div style="grid-column:1/-1;text-align:center;padding:3rem 1rem">
+              <span class="ai-pulse-dot" style="margin:0 auto 1rem;display:block"></span>
+              <p style="color:var(--wine);font-weight:600;font-size:1.05rem">✦ Atelier AI Stylist is curating your personalized ensembles...</p>
+              <p class="muted" style="font-size:0.85rem">Synthesizing browsing history, purchase journey, and color harmonies.</p>
+            </div>`;
+        }
+
+        try {
+          const hist = getClientHistory();
+          const prefs = getClientPreferences();
+          const params = new URLSearchParams();
+          if (hist.length) params.set('history', JSON.stringify(hist));
+          if (mood) params.set('mood', mood);
+          if (prefs) params.set('prefs', JSON.stringify(prefs));
+
+          const res = await fetch(`/api/recommendations/outfits?${params.toString()}`);
+          if (!res.ok) throw new Error('Failed to load recommendations');
+          const data = await res.json();
+          const outfits = data.outfits || [];
+          const profile = data.profile || {};
+
+          // Update AI Profile Status Bar with real dynamic insights
+          if (aiStatusEl) {
+            let statusText = '✦ AI Taste Profile: ';
+            if (profile.orderCount > 0) {
+              statusText += `${profile.orderCount} Order${profile.orderCount > 1 ? 's' : ''} Analyzed · Coordinating Complements Curated`;
+            } else if (profile.viewCount > 0) {
+              const topCat = Object.keys(profile.topCategories || {})[0] || 'Couture';
+              statusText += `Learned from ${profile.viewCount} garment view${profile.viewCount > 1 ? 's' : ''} · High affinity for ${topCat === 'ethnic' ? 'Royal Ethnic Silk' : 'Contemporary Western'} Silhouettes`;
+            } else {
+              statusText += 'Personalized based on seasonal haute couture harmonies & preferences';
+            }
+            aiStatusEl.textContent = statusText;
+          }
+
+          if (!outfits.length) {
+            if (outfitsContainer) {
+              outfitsContainer.innerHTML = `
+                <div style="grid-column:1/-1;text-align:center;padding:3rem 1rem">
+                  <p class="muted">No specific outfits matched this filter. Exploring all atelier curations...</p>
+                  <button class="btn gold sm" onclick="document.querySelector('#matcher-options .matcher-chip[data-mood=\\'\\']')?.click()">View All Curated Looks</button>
+                </div>`;
+            }
+            return;
+          }
+
+          if (outfitsContainer) {
+            outfitsContainer.innerHTML = outfits.map(o => {
+              const primary = o.items[0];
+              const pairing = o.items[1];
+              const accent = o.items[2] || null;
+
+              return `
+                <div class="ai-outfit-card" data-outfit-id="${esc(o.outfitId)}">
+                  <div class="ai-outfit-top">
+                    <div>
+                      <div class="ai-outfit-title">${esc(o.title)}</div>
+                      <div class="ai-outfit-tagline">${esc(o.tagline)}</div>
+                    </div>
+                    <span class="ai-outfit-badge">${esc(o.badgeText)}</span>
+                  </div>
+
+                  <!-- Visual Garment Breakdown -->
+                  <div class="ai-outfit-visual">
+                    <a class="ai-outfit-piece" href="product.html?id=${primary.id}" title="View ${esc(primary.name)}">
+                      <div class="ai-piece-img-wrap">
+                        <img class="ai-piece-img" src="${primary.image}" alt="${esc(primary.name)}" loading="lazy">
+                      </div>
+                      <div class="ai-piece-name">${esc(primary.name)}</div>
+                      <div class="ai-piece-price">${money(primary.price)}</div>
+                    </a>
+
+                    <div class="ai-piece-divider">+</div>
+
+                    <a class="ai-outfit-piece" href="product.html?id=${pairing.id}" title="View ${esc(pairing.name)}">
+                      <div class="ai-piece-img-wrap">
+                        <img class="ai-piece-img" src="${pairing.image}" alt="${esc(pairing.name)}" loading="lazy">
+                      </div>
+                      <div class="ai-piece-name">${esc(pairing.name)}</div>
+                      <div class="ai-piece-price">${money(pairing.price)}</div>
+                    </a>
+
+                    ${accent ? `
+                      <div class="ai-piece-divider">+</div>
+                      <a class="ai-outfit-piece" href="product.html?id=${accent.id}" title="View ${esc(accent.name)}">
+                        <div class="ai-piece-img-wrap">
+                          <img class="ai-piece-img" src="${accent.image}" alt="${esc(accent.name)}" loading="lazy">
+                        </div>
+                        <div class="ai-piece-name">${esc(accent.name)}</div>
+                        <div class="ai-piece-price">${money(accent.price)}</div>
+                      </a>
+                    ` : ''}
+                  </div>
+
+                  <!-- AI Stylist Rationale -->
+                  <div class="ai-outfit-quote">
+                    &ldquo;${esc(o.rationale)}&rdquo;
+                  </div>
+
+                  <!-- Pricing & 1-Click Complete Look Action -->
+                  <div class="ai-outfit-footer">
+                    <div class="ai-outfit-pricing">
+                      <span class="ai-pricing-label">Curated Ensemble Price</span>
+                      <div class="ai-bundle-price">
+                        ${money(o.bundlePrice)}
+                        <span class="ai-orig-price">${money(o.totalPrice)}</span>
+                        <span class="ai-savings-badge">Save ${money(o.savings)} (10% Privilege)</span>
+                      </div>
+                    </div>
+
+                    <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+                      <button class="btn gold sm add-outfit-cart-btn" data-outfit="${esc(JSON.stringify(o))}">
+                        ✦ Add Complete Outfit to Bag
+                      </button>
+                    </div>
+                  </div>
+                </div>`;
+            }).join('');
+
+            // Event: Add Complete Outfit to Bag
+            $$('.add-outfit-cart-btn').forEach(btn => {
+              btn.onclick = () => {
+                try {
+                  const outfit = JSON.parse(btn.dataset.outfit);
+                  const prefs = getClientPreferences();
+                  const preferredSize = prefs?.preferred_size || 'M';
+
+                  outfit.items.forEach(item => {
+                    const chosenSize = (item.sizes && item.sizes.includes(preferredSize)) ? preferredSize : (item.sizes?.[0] || 'M');
+                    const chosenColor = item.colors?.[0]?.name || 'Selected Shade';
+                    addToCart(item.id, chosenSize, 1, chosenColor);
+                  });
+
+                  toast(`✦ ${outfit.title} (${outfit.items.length} pieces) added to your bag with 10% privilege!`, 'cart.html', 'View Bag');
+                } catch (e) {
+                  toast('Ensemble pieces added to bag!', 'cart.html', 'View Bag');
+                }
+              };
+            });
+          }
+
+        } catch (err) {
+          console.error('[AI Stylist Error]:', err);
+          if (outfitsContainer) {
+            outfitsContainer.innerHTML = `<p class="muted" style="grid-column:1/-1;text-align:center;padding:2rem 0">Atelier AI Stylist is refreshing recommendations. Please check back in a moment.</p>`;
+          }
         }
       };
 
+      // Chips filter
       matcherChips.forEach(chip => {
-        chip.onclick = () => renderMatcher(chip.dataset.mood);
+        chip.onclick = () => loadAIOutfits(chip.dataset.mood || '');
       });
 
-      renderMatcher('wedding');
+      // Refresh button
+      const refreshBtn = $('#refresh-ai-outfits-btn');
+      if (refreshBtn) {
+        refreshBtn.onclick = () => {
+          refreshBtn.style.transform = 'rotate(180deg)';
+          setTimeout(() => refreshBtn.style.transform = '', 400);
+          loadAIOutfits(activeMood);
+        };
+      }
+
+      // Open Preferences Modal
+      const prefBtn = $('#open-ai-prefs-btn');
+      const prefModal = $('#ai-prefs-modal');
+      if (prefBtn && prefModal) {
+        prefBtn.onclick = () => {
+          const currentPrefs = getClientPreferences() || {
+            preferred_occasions: ['wedding', 'festive'],
+            preferred_colors: ['#5B1835', '#D4AF37'],
+            preferred_tradition: 'both',
+            preferred_size: 'M'
+          };
+
+          prefModal.innerHTML = `
+            <div class="ai-pref-modal-dialog">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem">
+                <div>
+                  <span class="hero-pill gold-pill" style="font-size:0.75rem;margin-bottom:0.4rem">✦ AI Style Studio</span>
+                  <h3 style="font-family:var(--serif);font-size:1.5rem;color:var(--wine-dark);margin:0">Personalize Your AI Stylist</h3>
+                  <p class="muted" style="font-size:0.85rem;margin-top:0.2rem">Customize your preferences to restyle your bespoke outfit recommendations in real-time.</p>
+                </div>
+                <button id="close-ai-pref-modal" style="background:transparent;border:none;font-size:1.5rem;cursor:pointer;color:#64748B">&times;</button>
+              </div>
+
+              <!-- Occasions -->
+              <div class="ai-pref-section">
+                <h4>✦ Preferred Occasions</h4>
+                <div class="ai-pref-chips-grid" id="pref-occasions-grid">
+                  <button class="ai-pref-chip ${currentPrefs.preferred_occasions?.includes('wedding') ? 'active' : ''}" data-val="wedding">Royal Wedding</button>
+                  <button class="ai-pref-chip ${currentPrefs.preferred_occasions?.includes('festive') ? 'active' : ''}" data-val="festive">Festive Celebrations</button>
+                  <button class="ai-pref-chip ${currentPrefs.preferred_occasions?.includes('work') ? 'active' : ''}" data-val="work">Executive Tailoring</button>
+                  <button class="ai-pref-chip ${currentPrefs.preferred_occasions?.includes('everyday') ? 'active' : ''}" data-val="everyday">Daywear Luxury</button>
+                </div>
+              </div>
+
+              <!-- Tradition -->
+              <div class="ai-pref-section">
+                <h4>✦ Sartorial Tradition</h4>
+                <div class="ai-pref-chips-grid" id="pref-tradition-grid">
+                  <button class="ai-pref-chip ${currentPrefs.preferred_tradition === 'both' ? 'active' : ''}" data-val="both">Both Traditions (Dual Wardrobe)</button>
+                  <button class="ai-pref-chip ${currentPrefs.preferred_tradition === 'ethnic' ? 'active' : ''}" data-val="ethnic">Haute Couture Ethnic</button>
+                  <button class="ai-pref-chip ${currentPrefs.preferred_tradition === 'western' ? 'active' : ''}" data-val="western">Sartorial Western Pret</button>
+                </div>
+              </div>
+
+              <!-- Sizing -->
+              <div class="ai-pref-section">
+                <h4>✦ Preferred Fit &amp; Size</h4>
+                <div class="ai-pref-chips-grid" id="pref-size-grid">
+                  ${['XS', 'S', 'M', 'L', 'XL'].map(sz => `
+                    <button class="ai-pref-chip ${currentPrefs.preferred_size === sz ? 'active' : ''}" data-val="${sz}">${sz}</button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- Color Palette -->
+              <div class="ai-pref-section">
+                <h4>✦ Signature Color Harmony</h4>
+                <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem" id="pref-colors-grid">
+                  ${[
+                    { name: 'Wine Burgundy', hex: '#5B1835' },
+                    { name: 'Champagne Gold', hex: '#D4AF37' },
+                    { name: 'Royal Emerald', hex: '#1B3B2B' },
+                    { name: 'Regal Navy', hex: '#1E293B' },
+                    { name: 'Ivory Cream', hex: '#FDFBF7' }
+                  ].map(c => `
+                    <button class="ai-color-chip ${currentPrefs.preferred_colors?.includes(c.hex) ? 'active' : ''}" data-hex="${c.hex}" title="${c.name}" style="background:${c.hex}"></button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;gap:0.8rem;margin-top:2rem;border-top:1px solid #E2E8F0;padding-top:1.2rem">
+                <button class="btn ghost sm" id="cancel-ai-pref-btn">Cancel</button>
+                <button class="btn gold sm" id="save-ai-pref-btn">✦ Save &amp; Restyle Outfits</button>
+              </div>
+            </div>`;
+
+          prefModal.style.display = 'flex';
+
+          // Interactive Chip Handlers inside Modal
+          const occChips = $$('#pref-occasions-grid .ai-pref-chip');
+          occChips.forEach(c => c.onclick = () => c.classList.toggle('active'));
+
+          const tradChips = $$('#pref-tradition-grid .ai-pref-chip');
+          tradChips.forEach(c => c.onclick = () => {
+            tradChips.forEach(x => x.classList.remove('active'));
+            c.classList.add('active');
+          });
+
+          const sizeChips = $$('#pref-size-grid .ai-pref-chip');
+          sizeChips.forEach(c => c.onclick = () => {
+            sizeChips.forEach(x => x.classList.remove('active'));
+            c.classList.add('active');
+          });
+
+          const colorChips = $$('#pref-colors-grid .ai-color-chip');
+          colorChips.forEach(c => c.onclick = () => c.classList.toggle('active'));
+
+          // Close modal
+          const closeModal = () => prefModal.style.display = 'none';
+          $('#close-ai-pref-modal').onclick = closeModal;
+          $('#cancel-ai-pref-btn').onclick = closeModal;
+
+          // Save Preferences
+          $('#save-ai-pref-btn').onclick = async () => {
+            const selectedOccasions = $$('#pref-occasions-grid .ai-pref-chip.active').map(c => c.dataset.val);
+            const selectedTradition = $('#pref-tradition-grid .ai-pref-chip.active')?.dataset.val || 'both';
+            const selectedSize = $('#pref-size-grid .ai-pref-chip.active')?.dataset.val || 'M';
+            const selectedColors = $$('#pref-colors-grid .ai-color-chip.active').map(c => c.dataset.hex);
+
+            const newPrefs = {
+              preferred_occasions: selectedOccasions.length ? selectedOccasions : ['wedding', 'festive'],
+              preferred_tradition: selectedTradition,
+              preferred_size: selectedSize,
+              preferred_colors: selectedColors.length ? selectedColors : ['#5B1835', '#D4AF37']
+            };
+
+            setClientPreferences(newPrefs);
+
+            // Sync with backend if logged in
+            if (db.customerToken()) {
+              fetchAuth('/api/recommendations/preferences', {
+                method: 'PUT',
+                body: newPrefs
+              }).catch(() => {});
+            }
+
+            closeModal();
+            toast('✦ AI Style Preferences saved! Restyling your outfits...');
+            loadAIOutfits(activeMood);
+          };
+        };
+      }
+
+      // Initial Load
+      loadAIOutfits();
 
       // Scroll to matcher from hero
       const jumpBtn = $('#jump-matcher');
@@ -2235,9 +2552,79 @@
         };
       }
 
-      // Related products
-      const related = PRODUCTS.filter(x => x.id !== p.id && (x.type === p.type || x.cat === p.cat)).slice(0, 4);
-      $('#related').innerHTML = related.map(card).join('');
+      // Track garment view in real-time AI browsing history
+      recordBrowsingHistory(p.id);
+
+      // AI Outfit Pairings & Complete The Look
+      const loadProductPairings = async () => {
+        const relatedEl = $('#related');
+        if (!relatedEl) return;
+        try {
+          const res = await fetch(`/api/recommendations/product/${p.id}/pairings`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.pairings && data.pairings.length > 0) {
+              const allItems = [data.target, ...data.pairings];
+              relatedEl.innerHTML = `
+                <div class="ai-pdp-pairing-box" style="grid-column:1/-1">
+                  <div class="ai-pdp-head">
+                    <div>
+                      <span class="hero-pill gold-pill" style="font-size:0.75rem;margin-bottom:0.3rem">✦ Atelier AI Complete Look · ${data.matchScore}% Match</span>
+                      <h3 style="font-family:var(--serif);font-size:1.35rem;color:var(--wine-dark);margin:0">Styled Harmonious Pairings for ${esc(p.name)}</h3>
+                      <p class="muted" style="font-size:0.85rem;margin-top:0.25rem">${esc(data.rationale)}</p>
+                    </div>
+                    <div style="text-align:right">
+                      <span style="font-size:0.78rem;color:var(--charcoal-muted);display:block">Full Outfit Combo</span>
+                      <strong style="font-size:1.3rem;color:var(--wine-dark)">${money(data.bundlePrice)}</strong>
+                      <span style="font-size:0.85rem;color:#9CA3AF;text-decoration:line-through;margin-left:0.4rem">${money(data.comboPrice)}</span>
+                      <span class="ai-savings-badge" style="margin-left:0.4rem">Save ${money(data.savings)} (10% Off)</span>
+                    </div>
+                  </div>
+
+                  <div class="ai-outfit-visual" style="margin-bottom:1.2rem">
+                    <div class="ai-outfit-piece">
+                      <div class="ai-piece-img-wrap" style="max-width:140px">
+                        <img class="ai-piece-img" src="${data.target.image}" alt="${esc(data.target.name)}">
+                      </div>
+                      <strong class="ai-piece-name">${esc(data.target.name)} (Current Piece)</strong>
+                      <span class="ai-piece-price">${money(data.target.price)}</span>
+                    </div>
+
+                    ${data.pairings.map(item => `
+                      <div class="ai-piece-divider">+</div>
+                      <a class="ai-outfit-piece" href="product.html?id=${item.id}">
+                        <div class="ai-piece-img-wrap" style="max-width:140px">
+                          <img class="ai-piece-img" src="${item.image}" alt="${esc(item.name)}">
+                        </div>
+                        <strong class="ai-piece-name">${esc(item.name)}</strong>
+                        <span class="ai-piece-price">${money(item.price)}</span>
+                      </a>
+                    `).join('')}
+                  </div>
+
+                  <div style="display:flex;justify-content:flex-end;gap:0.8rem">
+                    <button class="btn gold sm" id="add-complete-look-btn">
+                      ✦ Add Complete Look to Bag (${allItems.length} Pieces)
+                    </button>
+                  </div>
+                </div>`;
+
+              $('#add-complete-look-btn').onclick = () => {
+                allItems.forEach(item => {
+                  addToCart(item.id, size || 'M', 1);
+                });
+                toast(`✦ Complete Look (${allItems.length} pieces) added to your shopping bag with 10% privilege!`, 'cart.html', 'View Bag');
+              };
+              return;
+            }
+          }
+        } catch (e) { }
+
+        // Fallback to related products
+        const related = PRODUCTS.filter(x => x.id !== p.id && (x.type === p.type || x.cat === p.cat)).slice(0, 4);
+        relatedEl.innerHTML = related.map(card).join('');
+      };
+      loadProductPairings();
 
       // Color selection
       $$('[data-color]').forEach(b => {

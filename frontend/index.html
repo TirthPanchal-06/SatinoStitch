@@ -27,7 +27,7 @@
         <div class="hero-actions">
           <a class="btn gold" href="shop.html">Shop The Collection</a>
           <a class="btn ghost" href="collections.html">Explore Edits</a>
-          <button class="btn ghost sm" id="jump-matcher">Style Matcher</button>
+          <button class="btn ghost sm" id="jump-matcher">✦ AI Outfit Stylist</button>
         </div>
         
         <!-- Key brand statistics -->
@@ -95,24 +95,43 @@
     </div>
   </div>
 
-  <!-- Interactive Style & Occasion Concierge -->
-  <section class="matcher-section" id="style-matcher">
+  <!-- AI-Powered Atelier Stylist & Outfit Recommendations -->
+  <section class="matcher-section ai-stylist-section" id="style-matcher">
     <div class="wrap">
-      <div class="matcher-box">
+      <div class="matcher-box ai-stylist-box">
         <div class="matcher-head">
-          <span class="hero-pill">Style Concierge</span>
-          <h2>Find Your Signature Ensemble</h2>
-          <p class="muted">Select your upcoming occasion or mood to view handpicked pairings crafted for the moment.</p>
+          <span class="hero-pill gold-pill">✦ AI Powered Atelier Stylist</span>
+          <h2>Bespoke Outfit Recommendations</h2>
+          <p class="muted">Intelligent couture ensembles styled in real-time based on your browsing journey, previous purchases, and personal sartorial preferences.</p>
+          
+          <!-- Live AI Taste Profile Bar -->
+          <div class="ai-taste-profile-bar" id="ai-taste-profile-bar">
+            <div class="ai-taste-indicator">
+              <span class="ai-pulse-dot"></span>
+              <strong id="ai-taste-status">✦ AI Taste Profile: Harmonizing your browsing &amp; purchases...</strong>
+            </div>
+            <div class="ai-taste-actions">
+              <button class="btn-ai-pill" id="open-ai-prefs-btn" title="Customize your occasion, color and silhouette preferences">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Tune Preferences
+              </button>
+              <button class="btn-ai-pill ghost" id="refresh-ai-outfits-btn" title="Recalculate AI outfit suggestions">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                Regenerate Look
+              </button>
+            </div>
+          </div>
         </div>
         
         <div class="matcher-chips" id="matcher-options">
-          <button class="matcher-chip active" data-mood="wedding">Royal Wedding</button>
+          <button class="matcher-chip active" data-mood="">✦ All AI Outfits</button>
+          <button class="matcher-chip" data-mood="wedding">Royal Wedding</button>
           <button class="matcher-chip" data-mood="festive">Festive Celebrations</button>
           <button class="matcher-chip" data-mood="work">Executive Tailoring</button>
-          <button class="matcher-chip" data-mood="everyday">Daywear &amp; Soirée</button>
+          <button class="matcher-chip" data-mood="everyday">Daywear Luxury</button>
         </div>
 
-        <div class="matcher-results" id="matcher-grid"></div>
+        <div class="ai-outfits-grid" id="ai-outfits-container"></div>
       </div>
     </div>
   </section>
@@ -295,6 +314,7 @@
 <!-- Interactive Modals Container -->
 <div id="quick-view-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true"></div>
 <div id="fit-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true"></div>
+<div id="ai-prefs-modal" class="modal-overlay" style="display:none" role="dialog" aria-modal="true"></div>
 
 <!-- Core Application Client Scripts -->
 <script src="js/app.js"></script>

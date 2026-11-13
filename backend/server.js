@@ -20,6 +20,7 @@ const cartRoutes = require('./routes/cartRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
 const couponRoutes = require('./routes/couponRoutes');
 const userRoutes = require('./routes/userRoutes');
+const recommendationRoutes = require('./routes/recommendationRoutes');
 const miscRoutes = require('./routes/miscRoutes');
 
 const app = express();
@@ -48,6 +49,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 app.use('/api', miscRoutes);
 
 /* ---------- Error Handling ---------- */
