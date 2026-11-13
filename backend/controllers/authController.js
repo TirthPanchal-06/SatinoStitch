@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const userModel = require('../models/userModel');
 const activityModel = require('../models/activityModel');
+const adminUpgradeModel = require('../models/adminUpgradeModel');
 const { generateToken } = require('../middleware/auth');
 
 /**
@@ -50,6 +51,14 @@ async function customerRegister(req, res) {
       description: `New customer account registered: ${user.name} (${user.email})`,
       metadata: { userId: user.id, email: user.email }
     }).catch(() => {});
+
+    // Notify admin
+    adminUpgradeModel.createAdminNotification({
+      type: 'user',
+      title: 'New Patron Registration',
+      message: `${user.name} (${user.email}) created a new patron account.`,
+      link: 'admin.html?tab=users'
+    }).catch(() => { });
 
     const token = generateToken(user, 'customer');
 

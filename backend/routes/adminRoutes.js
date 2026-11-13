@@ -25,4 +25,20 @@ router.post('/coupons', couponController.createCoupon);
 router.put('/coupons/:id', couponController.updateCoupon);
 router.delete('/coupons/:id', couponController.deleteCoupon);
 
+/* Upgraded Business Management Routes */
+router.get('/queries', adminController.getSupportQueries);
+router.put('/queries/:id', adminController.updateSupportQuery);
+
+router.get('/settings', adminController.getWebsiteSettings);
+router.put('/settings/password', adminController.updateAdminPassword);
+router.put('/settings/:key', adminController.updateWebsiteSetting);
+
+router.get('/notifications', adminController.getAdminNotifications);
+router.put('/notifications/read-all', adminController.markAllNotificationsRead);
+router.delete('/notifications', adminController.clearNotifications);
+router.delete('/notifications/:id', adminController.clearNotifications);
+
+router.get('/users/:id/orders', adminController.getUserOrdersAdmin);
+router.get('/health', adminController.getSystemHealth);
+
 module.exports = router;

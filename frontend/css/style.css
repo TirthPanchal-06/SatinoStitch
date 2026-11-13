@@ -7776,3 +7776,421 @@ html {
 [id] {
   scroll-margin-top: 130px;
 }
+
+/* ==========================================================================
+   Admin System Upgrade Styles: Invoices, Support, CMS, Settings & Modals
+   ========================================================================== */
+
+/* Universal Admin Modal Overlay */
+.admin-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.admin-modal-dialog {
+  background: #FFFFFF;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 780px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 1px solid #E2E8F0;
+  position: relative;
+  animation: adminModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes adminModalIn {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.admin-modal-head {
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #E2E8F0;
+  background: #F8FAFC;
+}
+
+.admin-modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  color: #64748B;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.admin-modal-close-btn:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+
+.admin-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Formal Atelier GST Tax Invoice Styling */
+.admin-invoice-box {
+  background: #FFFFFF;
+  padding: 32px;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  color: #1E293B;
+  line-height: 1.5;
+}
+
+.invoice-brand-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #0F172A;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+}
+
+.invoice-brand-left {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.invoice-emblem {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.invoice-wordmark {
+  font-family: 'Marcellus', serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #5B1835;
+  margin: 0 0 2px;
+}
+
+.invoice-tagline {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.invoice-brand-right {
+  text-align: right;
+  font-size: 12px;
+  color: #475569;
+}
+
+.invoice-badge-title {
+  display: inline-block;
+  background: #0F172A;
+  color: #FFFFFF;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.invoice-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #F8FAFC;
+  border-radius: 6px;
+  border: 1px solid #E2E8F0;
+}
+
+.invoice-meta-col h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748B;
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+  font-size: 13px;
+}
+
+.invoice-table th {
+  background: #F1F5F9;
+  color: #334155;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid #CBD5E1;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.invoice-table td {
+  padding: 12px;
+  border: 1px solid #E2E8F0;
+  color: #1E293B;
+}
+
+.invoice-summary-box {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.invoice-summary-table {
+  width: 320px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.invoice-summary-table td {
+  padding: 6px 12px;
+}
+
+.invoice-summary-table tr.total-row td {
+  border-top: 2px solid #0F172A;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0F172A;
+  padding-top: 10px;
+}
+
+.invoice-footer-notes {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px dashed #CBD5E1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 11px;
+  color: #64748B;
+}
+
+/* Customer Support Desk Styles */
+.support-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.support-stat-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+
+.support-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #64748B;
+  display: block;
+}
+
+.support-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0F172A;
+  margin-top: 4px;
+}
+
+.support-filter-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #E2E8F0;
+  padding-bottom: 10px;
+}
+
+.support-filter-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748B;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.support-filter-btn.active {
+  background: #EEF2FF;
+  color: #4F46E5;
+  border-color: #C7D2FE;
+}
+
+/* Status Pill Helpers */
+.pill-status-new {
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.pill-status-progress {
+  background: #EEF2FF;
+  color: #4F46E5;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.pill-status-resolved {
+  background: #DCFCE7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* CMS & Settings Form Groups */
+.admin-cms-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+
+.admin-cms-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-cms-section-sub {
+  font-size: 13px;
+  color: #64748B;
+  margin: 0 0 18px;
+}
+
+.admin-form-group {
+  margin-bottom: 16px;
+}
+
+.admin-form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.admin-form-control {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  background: #FFFFFF;
+  color: #0F172A;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-form-control:focus {
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.admin-form-control[disabled] {
+  background: #F1F5F9;
+  color: #64748B;
+  cursor: not-allowed;
+}
+
+/* Print Rules for Invoices */
+@media print {
+  body.admin-dashboard-theme {
+    background: #FFFFFF !important;
+  }
+  .admin-sidebar,
+  .admin-top-header,
+  .admin-modal-head,
+  .admin-modal-close-btn,
+  .invoice-actions,
+  #admin-sidebar-backdrop,
+  .admin-notif-dropdown,
+  .admin-sidebar-backdrop {
+    display: none !important;
+  }
+  .admin-modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  .admin-modal-dialog {
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    max-height: none !important;
+  }
+  .admin-modal-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .admin-invoice-box {
+    border: none !important;
+    padding: 0 !important;
+  }
+}

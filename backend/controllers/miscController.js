@@ -1,5 +1,6 @@
 const { testConnection, query } = require('../config/db');
 const env = require('../config/env');
+const adminUpgradeModel = require('../models/adminUpgradeModel');
 
 async function getHealth(req, res) {
   const dbHealth = await testConnection();
@@ -156,15 +157,59 @@ function subscribeNewsletter(req, res) {
   });
 }
 
-function submitContact(req, res) {
-  const { name, email, phone, message } = req.body || {};
+async function submitContact(req, res) {
+  const { name, email, phone, message, subject, type } = req.body || {};
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Name, email, and inquiry message are required.' });
   }
-  res.json({
-    ok: true,
-    message: 'Your inquiry has reached our senior couture concierge. Expect a response within 4 hours.'
-  });
+
+  try {
+    const saved = await adminUpgradeModel.createSupportQuery({
+      name,
+      email,
+      phone: phone || null,
+      subject: subject || 'Atelier Customer Inquiry',
+      message,
+      type: type || 'contact'
+    });
+
+    // Notify admin dashboard
+    adminUpgradeModel.createAdminNotification({
+      type: 'query',
+      title: `New Inquiry: ${name}`,
+      message: `${name} (${email}): "${message.slice(0, 70)}${message.length > 70 ? '...' : ''}"`,
+      link: 'admin.html?tab=support'
+    }).catch(() => { });
+
+    res.json({
+      ok: true,
+      message: 'Your inquiry has reached our senior couture concierge. Expect a response within 4 hours.',
+      queryId: saved.id
+    });
+  } catch (err) {
+    console.error('[Submit Contact Error]:', err);
+    res.status(500).json({ error: 'Failed to submit inquiry. Please try again.' });
+  }
+}
+
+async function getPublicSettings(req, res) {
+  try {
+    const settings = await adminUpgradeModel.getAllWebsiteSettings();
+    res.json(settings);
+  } catch (err) {
+    res.json({
+      announcement: {
+        tickerText: 'COMPLIMENTARY EXPRESS SHIPPING ON ORDERS OVER ₹3,000',
+        promoCode: 'HERITAGE10',
+        promoDiscount: '10% OFF'
+      },
+      hero_banner: {
+        pill: 'Handcrafted Heritage & Sartorial Couture',
+        headline: 'Woven for weddings, cut for every day.',
+        subheadline: 'Pure Banarasi silk, heritage bandhani and artisanal hand-block prints, paired alongside precision tailoring and liquid satin for the rest of the week. One wardrobe, two timeless traditions.'
+      }
+    });
+  }
 }
 
 module.exports = {
@@ -172,6 +217,7 @@ module.exports = {
   getBanners,
   getCollections,
   subscribeNewsletter,
-  submitContact
+  submitContact,
+  getPublicSettings
 };
 

@@ -3,6 +3,7 @@ const productModel = require('../models/productModel');
 const couponModel = require('../models/couponModel');
 const cartModel = require('../models/cartModel');
 const activityModel = require('../models/activityModel');
+const adminUpgradeModel = require('../models/adminUpgradeModel');
 const env = require('../config/env');
 
 async function getPaymentConfig(req, res) {
@@ -137,6 +138,28 @@ async function createOrder(req, res) {
       description: `New commission Order #${order.id} placed by ${customer.name} (Total: ₹${grandTotal.toLocaleString('en-IN')})`,
       metadata: { orderId: order.id, total: grandTotal, paymentMethod: resolvedPaymentMethod }
     }).catch(() => { });
+
+    // Real-time admin notification
+    adminUpgradeModel.createAdminNotification({
+      type: 'order',
+      title: `New Order #${order.id}`,
+      message: `${customer.name} placed order for ₹${grandTotal.toLocaleString('en-IN')} via ${resolvedPaymentMethod.toUpperCase()} (${validatedItems.length} items)`,
+      link: `admin.html?tab=admin-orders&order=${order.id}`
+    }).catch(() => { });
+
+    // Check for stock alerts
+    for (const item of validatedItems) {
+      productModel.getProductById(Number(item.id)).then(pCheck => {
+        if (pCheck && pCheck.stock <= 3) {
+          adminUpgradeModel.createAdminNotification({
+            type: 'stock',
+            title: `Low Stock: ${pCheck.name}`,
+            message: `Only ${pCheck.stock} units remaining in inventory. Restock recommended.`,
+            link: 'admin.html?tab=inventory'
+          }).catch(() => { });
+        }
+      }).catch(() => { });
+    }
 
     activityModel.logCustomerActivity({
       userId,

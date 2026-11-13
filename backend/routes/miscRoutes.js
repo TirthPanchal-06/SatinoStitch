@@ -11,6 +11,7 @@ const { authenticateAdminToken, optionalAuth } = require('../middleware/auth');
 router.get('/health', miscController.getHealth);
 router.get('/banners', miscController.getBanners);
 router.get('/collections', miscController.getCollections);
+router.get('/settings', miscController.getPublicSettings);
 router.post('/newsletter', miscController.subscribeNewsletter);
 router.post('/contact', miscController.submitContact);
 
