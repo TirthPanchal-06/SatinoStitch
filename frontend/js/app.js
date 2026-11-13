@@ -231,10 +231,10 @@
 
   async function fetchAuth(url, opts = {}) {
     opts.headers = opts.headers || {};
-    // Route tokens based on endpoint destination:
-    // Admin APIs strictly use the Admin token; customer APIs strictly use Customer token.
-    const isAdmin = url.startsWith('/api/admin');
-    const token = isAdmin ? db.adminToken() : db.customerToken();
+    // Route tokens based on endpoint destination and page context:
+    const onAdminPage = document.body && document.body.dataset.page === 'admin';
+    const isAdminEndpoint = url.startsWith('/api/admin') || (url.startsWith('/api/products') && opts.method && opts.method.toUpperCase() !== 'GET');
+    const token = (isAdminEndpoint || onAdminPage) ? (db.adminToken() || db.customerToken()) : (db.customerToken() || db.adminToken());
     if (token) {
       opts.headers['Authorization'] = `Bearer ${token}`;
     }
@@ -6011,15 +6011,23 @@
                   const add = Number(btn.dataset.add || 5);
                   const newStock = Number(btn.dataset.current) + add;
                   try {
-                    const r = await fetchAuth(`/api/products/${pid}/stock`, {
+                    btn.disabled = true;
+                    let r = await fetchAuth(`/api/admin/products/${pid}/stock`, {
                       method: 'PUT',
                       body: { stock: newStock }
                     });
+                    if (!r.ok) {
+                      r = await fetchAuth(`/api/products/${pid}/stock`, {
+                        method: 'PUT',
+                        body: { stock: newStock }
+                      });
+                    }
                     if (!r.ok) throw new Error((await r.json()).error);
                     toast(`Stock replenished (+${add} units) in PostgreSQL.`);
                     renderTab('overview', true);
                   } catch (e) {
                     toast(e.message || 'Could not update stock.');
+                    btn.disabled = false;
                   }
                 };
               });
@@ -6731,7 +6739,7 @@ else if (tabName === 'returns') {
                     const pid = btn.dataset.pid;
                     const newStock = Number(btn.dataset.current) + 1;
                     try {
-                      await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                      await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
                       renderTab('inventory');
                     } catch (err) { toast('Could not adjust stock'); }
                   };
@@ -6742,7 +6750,7 @@ else if (tabName === 'returns') {
                     const pid = btn.dataset.pid;
                     const newStock = Math.max(0, Number(btn.dataset.current) - 1);
                     try {
-                      await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                      await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
                       renderTab('inventory');
                     } catch (err) { toast('Could not adjust stock'); }
                   };
@@ -6754,7 +6762,7 @@ else if (tabName === 'returns') {
                     const toAdd = Number(btn.dataset.add || 5);
                     const newStock = Number(btn.dataset.current) + toAdd;
                     try {
-                      await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                      await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
                       toast(`Added +${toAdd} units to stock.`);
                       renderTab('inventory');
                     } catch (err) { toast('Could not adjust stock'); }
@@ -7174,7 +7182,7 @@ else if (tabName === 'returns') {
                   const pid = btn.dataset.pid;
                   const newStock = Number(btn.dataset.current) + 1;
                   try {
-                    await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                    await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
                     renderTab('crud');
                   } catch (err) { toast('Could not adjust stock'); }
                 };
@@ -7185,7 +7193,7 @@ else if (tabName === 'returns') {
                   const pid = btn.dataset.pid;
                   const newStock = Math.max(0, Number(btn.dataset.current) - 1);
                   try {
-                    await fetchAuth(`/api/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                    await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
                     renderTab('crud');
                   } catch (err) { toast('Could not adjust stock'); }
                 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
+const adminController = require('../controllers/adminController');
 const { authenticateAdminToken, optionalAuth } = require('../middleware/auth');
 
 router.get('/', productController.getProducts);
@@ -8,6 +9,7 @@ router.get('/:id', optionalAuth, productController.getProductById);
 
 // Admin-only product mutation
 router.post('/', authenticateAdminToken, productController.createProduct);
+router.put('/:id/stock', authenticateAdminToken, adminController.updateProductStock);
 router.put('/:id', authenticateAdminToken, productController.updateProduct);
 router.delete('/:id', authenticateAdminToken, productController.deleteProduct);
 

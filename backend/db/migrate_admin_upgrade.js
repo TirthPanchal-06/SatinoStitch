@@ -214,3 +214,4 @@ if (require.main === module) {
 }
 
 module.exports = { migrateAdminUpgrade };
+
