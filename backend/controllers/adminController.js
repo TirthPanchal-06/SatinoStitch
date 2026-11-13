@@ -5,6 +5,7 @@ const userModel = require('../models/userModel');
 const orderModel = require('../models/orderModel');
 const adminUpgradeModel = require('../models/adminUpgradeModel');
 const customerNotificationModel = require('../models/customerNotificationModel');
+const securityAuditService = require('../services/securityAuditService');
 const { testConnection, query } = require('../config/db');
 
 async function getAnalytics(req, res) {
@@ -367,6 +368,87 @@ async function getSystemHealth(req, res) {
   }
 }
 
+/* ============================================================
+   Security & Fraud Management Controller
+   ============================================================ */
+async function getSecurityAuditLogs(req, res) {
+  try {
+    const limit = parseInt(req.query.limit || '50', 10);
+    const eventType = req.query.eventType || null;
+    const severity = req.query.severity || null;
+    const logs = await securityAuditService.getAuditLogs({ limit, eventType, severity });
+    res.json({ logs });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve security audit logs.' });
+  }
+}
+
+async function getSecurityStats(req, res) {
+  try {
+    const stats = await securityAuditService.getSecurityStats();
+    res.json({ success: true, ...stats });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve security statistics.' });
+  }
+}
+
+async function reviewOrderFraud(req, res) {
+  const { id } = req.params;
+  const { decision, notes } = req.body || {};
+  if (!decision || !['approved', 'blocked'].includes(decision)) {
+    return res.status(400).json({ error: 'Valid decision ("approved" or "blocked") is required.' });
+  }
+
+  try {
+    const updated = await orderModel.updateOrderFraudReview(id, decision, notes);
+    if (!updated) return res.status(404).json({ error: 'Order not found.' });
+
+    securityAuditService.logSecurityEvent({
+      eventType: 'ADMIN_FRAUD_REVIEW',
+      severity: decision === 'blocked' ? 'WARNING' : 'INFO',
+      userId: req.user.id,
+      userEmail: req.user.email,
+      path: `/api/admin/orders/${id}/fraud-review`,
+      method: 'PUT',
+      details: { orderId: id, decision, notes }
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      message: `Commission Order #${id} fraud status updated to "${decision.toUpperCase()}".`,
+      order: updated
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function unlockUserAccount(req, res) {
+  const { id } = req.params;
+  try {
+    const unlocked = await userModel.unlockUser(id);
+    if (!unlocked) return res.status(404).json({ error: 'User account not found.' });
+
+    securityAuditService.logSecurityEvent({
+      eventType: 'ADMIN_ACCOUNT_UNLOCKED',
+      severity: 'INFO',
+      userId: req.user.id,
+      userEmail: req.user.email,
+      path: `/api/admin/users/${id}/unlock`,
+      method: 'POST',
+      details: { unlockedUserId: id, unlockedEmail: unlocked.email }
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      message: `Account for ${unlocked.name} (${unlocked.email}) successfully unlocked.`,
+      user: unlocked
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   getAnalytics,
   getActivities,
@@ -386,6 +468,10 @@ module.exports = {
   clearNotifications,
   getUserOrdersAdmin,
   updateAdminPassword,
-  getSystemHealth
+  getSystemHealth,
+  getSecurityAuditLogs,
+  getSecurityStats,
+  reviewOrderFraud,
+  unlockUserAccount
 };
 

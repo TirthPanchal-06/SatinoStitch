@@ -9,6 +9,8 @@ const fs = require('fs');
 const env = require('./config/env');
 const { testConnection } = require('./config/db');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { securityHeaders, webAttackShield } = require('./middleware/security');
+const { globalApiLimiter } = require('./middleware/rateLimiter');
 
 // Modular Route Handlers
 const authRoutes = require('./routes/authRoutes');
@@ -26,9 +28,14 @@ const miscRoutes = require('./routes/miscRoutes');
 
 const app = express();
 
-/* ---------- Core Middlewares ---------- */
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+/* ---------- Security & Hardening Middlewares ---------- */
+// 1. Enterprise Security Headers (CSP, HSTS, XSS, FrameGuard)
+app.use(securityHeaders);
+
+/* ---------- Core Request Parsers ---------- */
+// Guard against ReDoS and large payload exhaustion (2MB safe limit)
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Ensure frontend/uploads folder exists
 const uploadsPath = path.join(__dirname, '..', 'frontend', 'uploads');
@@ -39,6 +46,11 @@ if (!fs.existsSync(uploadsPath)) {
 // Serve static frontend assets & uploaded garment media
 app.use('/uploads', express.static(uploadsPath));
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+/* ---------- API Attack Shield & Rate Limiting ---------- */
+// Global rate limiting & web attack payload inspection on all /api endpoints
+app.use('/api', globalApiLimiter);
+app.use('/api', webAttackShield);
 
 /* ---------- API Routes Mounting ---------- */
 app.use('/api/auth', authRoutes);

@@ -6007,6 +6007,7 @@
                             <th>Date</th>
                             <th>Total Amount</th>
                             <th>Payment</th>
+                            <th>Security &amp; Risk</th>
                             <th>Fulfillment Status</th>
                             <th>Action</th>
                           </tr>
@@ -6045,6 +6046,35 @@
                                   ${o.payment_status !== 'paid' ? `
                                     <button class="link mark-paid-btn" data-order-id="${o.id}" style="font-size:0.74rem;color:#1D4ED8;margin-top:4px;display:inline-block;background:none;border:none;cursor:pointer;padding:0">Mark Settled</button>
                                   ` : ''}
+                                </td>
+                                <td>
+                                  ${(() => {
+                                    const score = o.fraud_score || 0;
+                                    const risk = o.risk_level || (score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low');
+                                    if (risk === 'high') {
+                                      return `
+                                        <div style="display:inline-flex;align-items:center;gap:4px;background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;padding:3px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">
+                                          <span>🚨 High Risk</span>
+                                          <span style="opacity:0.85">(${score}/100)</span>
+                                        </div>
+                                        <div style="font-size:0.7rem;color:#DC2626;margin-top:2px">${(o.fraud_flags && o.fraud_flags[0]) ? esc(String(o.fraud_flags[0]).replace(/_/g, ' ')) : 'Manual verify'}</div>
+                                      `;
+                                    } else if (risk === 'medium') {
+                                      return `
+                                        <div style="display:inline-flex;align-items:center;gap:4px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:3px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">
+                                          <span>⚠️ Flagged</span>
+                                          <span style="opacity:0.85">(${score}/100)</span>
+                                        </div>
+                                      `;
+                                    } else {
+                                      return `
+                                        <div style="display:inline-flex;align-items:center;gap:4px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;padding:3px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">
+                                          <span>🛡️ Safe</span>
+                                          <span style="opacity:0.85">(${score})</span>
+                                        </div>
+                                      `;
+                                    }
+                                  })()}
                                 </td>
                                 <td>
                                   <div style="display:flex;align-items:center;gap:0.4rem">
@@ -8746,12 +8776,17 @@ else if (tabName === 'returns') {
           else if (tabName === 'profile') {
             container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading atelier system controls &amp; PostgreSQL diagnostics...</p>';
             try {
-              const [settingsRes, healthRes] = await Promise.all([
+              const [settingsRes, healthRes, secStatsRes, auditLogsRes] = await Promise.all([
                 fetchAuth('/api/admin/settings').catch(() => ({ json: () => ({}) })),
-                fetchAuth('/api/admin/health').catch(() => ({ json: () => ({}) }))
+                fetchAuth('/api/admin/health').catch(() => ({ json: () => ({}) })),
+                fetchAuth('/api/admin/security/stats').catch(() => ({ json: () => ({}) })),
+                fetchAuth('/api/admin/security/audit-logs?limit=8').catch(() => ({ json: () => ({}) }))
               ]);
               const settings = (await settingsRes.json()) || {};
               const health = (await healthRes.json()) || {};
+              const secStats = (await secStatsRes.json()) || {};
+              const auditData = (await auditLogsRes.json()) || {};
+              const auditLogs = auditData.logs || [];
 
               container.innerHTML = `
                 <div class="card-head-between" style="margin-bottom:1.5rem">
@@ -8908,6 +8943,113 @@ else if (tabName === 'returns') {
 
                     <div style="font-size:11px;color:#94A3B8;margin-top:10px">
                       Server Uptime: ${health.uptimeSeconds || 0}s &middot; Memory RSS: ${health.memory?.rss || '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Card 5: Enterprise Security & Fraud Prevention Command Center -->
+                <div class="admin-cms-card" style="margin-top:20px;padding:24px;border:1px solid #E2E8F0;border-radius:10px;background:#FFFFFF">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #E2E8F0">
+                    <div>
+                      <h3 class="admin-cms-section-title" style="margin:0;font-size:16px;display:flex;align-items:center;gap:8px">
+                        <span>🛡️</span> Security &amp; Fraud Prevention Intelligence
+                      </h3>
+                      <p class="admin-cms-section-sub" style="margin:2px 0 0">
+                        Active Web Application Firewall, brute-force defense, HMAC-SHA256 payment verification, and tamper-evident audit logs
+                      </p>
+                    </div>
+                    <span style="display:inline-flex;align-items:center;gap:6px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;padding:5px 12px;border-radius:9999px;font-size:11px;font-weight:700">
+                      <span style="width:7px;height:7px;border-radius:50%;background:#10B981;display:inline-block"></span>
+                      ALL 5 SECURITY PILLARS ACTIVE
+                    </span>
+                  </div>
+
+                  <!-- 5 Security Subsystems Status -->
+                  <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:12px;margin-bottom:20px">
+                    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px">
+                      <div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.5px">WAF Attack Shield</div>
+                      <div style="font-size:13px;font-weight:700;color:#0F172A;margin-top:4px">XSS / SQLi Shield</div>
+                      <div style="font-size:11px;color:#10B981;margin-top:4px;font-weight:600">● Active Filter</div>
+                    </div>
+                    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px">
+                      <div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.5px">Payment Verification</div>
+                      <div style="font-size:13px;font-weight:700;color:#0F172A;margin-top:4px">HMAC-SHA256</div>
+                      <div style="font-size:11px;color:#10B981;margin-top:4px;font-weight:600">● Timing-Safe Equal</div>
+                    </div>
+                    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px">
+                      <div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.5px">Brute-Force Guard</div>
+                      <div style="font-size:13px;font-weight:700;color:#0F172A;margin-top:4px">5 Attempts Limit</div>
+                      <div style="font-size:11px;color:#10B981;margin-top:4px;font-weight:600">● 15m HTTP 423 Lock</div>
+                    </div>
+                    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px">
+                      <div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.5px">Rate Limiting</div>
+                      <div style="font-size:13px;font-weight:700;color:#0F172A;margin-top:4px">Sliding Window</div>
+                      <div style="font-size:11px;color:#10B981;margin-top:4px;font-weight:600">● RFC Headers Active</div>
+                    </div>
+                    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px">
+                      <div style="font-size:11px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.5px">RBAC Security</div>
+                      <div style="font-size:13px;font-weight:700;color:#0F172A;margin-top:4px">Active DB Verify</div>
+                      <div style="font-size:11px;color:#10B981;margin-top:4px;font-weight:600">● Role Separation</div>
+                    </div>
+                  </div>
+
+                  <!-- Live Stats Row -->
+                  <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;margin-bottom:20px">
+                    <div style="background:#EFF6FF;border:1px solid #DBEAFE;border-radius:8px;padding:14px;text-align:center">
+                      <div style="font-size:22px;font-weight:800;color:#1E40AF">${secStats.totalEvents || auditLogs.length || 0}</div>
+                      <div style="font-size:11px;font-weight:600;color:#3B82F6;margin-top:2px">Security Audit Events</div>
+                    </div>
+                    <div style="background:#FEF2F2;border:1px solid #FEE2E2;border-radius:8px;padding:14px;text-align:center">
+                      <div style="font-size:22px;font-weight:800;color:#991B1B">${secStats.blockedAttacks ?? 0}</div>
+                      <div style="font-size:11px;font-weight:600;color:#EF4444;margin-top:2px">Attacks Blocked (24h)</div>
+                    </div>
+                    <div style="background:#FFFBEB;border:1px solid #FEF3C7;border-radius:8px;padding:14px;text-align:center">
+                      <div style="font-size:22px;font-weight:800;color:#92400E">${secStats.highRiskOrders ?? 0}</div>
+                      <div style="font-size:11px;font-weight:600;color:#F59E0B;margin-top:2px">High-Risk Fraud Flags</div>
+                    </div>
+                    <div style="background:#F0FDF4;border:1px solid #DCFCE7;border-radius:8px;padding:14px;text-align:center">
+                      <div style="font-size:22px;font-weight:800;color:#166534">${secStats.lockedAccounts ?? 0}</div>
+                      <div style="font-size:11px;font-weight:600;color:#10B981;margin-top:2px">Locked Bad-Actor Accounts</div>
+                    </div>
+                  </div>
+
+                  <!-- Tamper-Evident Security Audit Logs Table -->
+                  <div style="border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+                    <div style="background:#F8FAFC;padding:10px 14px;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center">
+                      <span style="font-size:12px;font-weight:700;color:#334155">Real-Time Security Audit Trail (PostgreSQL Log)</span>
+                      <span style="font-size:11px;color:#64748B">Live immutable ledger</span>
+                    </div>
+                    <div style="overflow-x:auto">
+                      <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left">
+                        <thead>
+                          <tr style="background:#F1F5F9;border-bottom:1px solid #E2E8F0;color:#475569">
+                            <th style="padding:8px 12px">Time</th>
+                            <th style="padding:8px 12px">Event</th>
+                            <th style="padding:8px 12px">Severity</th>
+                            <th style="padding:8px 12px">Client IP</th>
+                            <th style="padding:8px 12px">Endpoint / Path</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${auditLogs.length === 0 ? `
+                            <tr><td colspan="5" style="padding:16px;text-align:center;color:#94A3B8">No security incidents logged. Atelier infrastructure is running cleanly.</td></tr>
+                          ` : auditLogs.slice(0, 8).map(lg => {
+                            const sevColor = lg.severity === 'CRITICAL' ? '#DC2626' : lg.severity === 'WARNING' ? '#D97706' : '#2563EB';
+                            const sevBg = lg.severity === 'CRITICAL' ? '#FEE2E2' : lg.severity === 'WARNING' ? '#FEF3C7' : '#EFF6FF';
+                            return `
+                              <tr style="border-bottom:1px solid #F1F5F9">
+                                <td style="padding:8px 12px;color:#64748B;white-space:nowrap">${new Date(lg.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                                <td style="padding:8px 12px;font-weight:600;color:#0F172A">${esc(lg.event_type)}</td>
+                                <td style="padding:8px 12px">
+                                  <span style="background:${sevBg};color:${sevColor};padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">${esc(lg.severity)}</span>
+                                </td>
+                                <td style="padding:8px 12px;font-family:monospace;color:#475569">${esc(lg.ip_address || '127.0.0.1')}</td>
+                                <td style="padding:8px 12px;color:#64748B">${esc(lg.path || '—')}</td>
+                              </tr>
+                            `;
+                          }).join('')}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>

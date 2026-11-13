@@ -13,9 +13,12 @@ async function createOrder(orderData, items) {
       INSERT INTO orders (
         id, user_id, customer_name, customer_email, customer_phone,
         shipping_address, subtotal, discount, coupon_code, shipping_fee,
-        total, payment_method, payment_status, status, tracking_number, estimated_delivery
+        total, payment_method, payment_status, status, tracking_number, estimated_delivery,
+        payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature,
+        fraud_score, fraud_status, fraud_flags, client_ip, risk_level
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Confirmed', $14, NOW() + INTERVAL '4 days'
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Confirmed', $14, NOW() + INTERVAL '4 days',
+        $15, $16, $17, $18, $19, $20, $21, $22, $23
       ) RETURNING *;
     `;
 
@@ -33,7 +36,16 @@ async function createOrder(orderData, items) {
       orderData.total,
       orderData.paymentMethod || 'cod',
       orderData.paymentStatus || 'pending',
-      trackingNumber
+      trackingNumber,
+      orderData.paymentId || null,
+      orderData.razorpayOrderId || null,
+      orderData.razorpayPaymentId || null,
+      orderData.razorpaySignature || null,
+      orderData.fraudScore || 0,
+      orderData.fraudStatus || 'clean',
+      JSON.stringify(orderData.fraudFlags || []),
+      orderData.clientIp || null,
+      orderData.riskLevel || 'low'
     ]);
 
     const order = orderRes.rows[0];
@@ -174,12 +186,26 @@ async function updateOrderPaymentStatus(id, paymentStatus) {
   return res.rows[0] || null;
 }
 
+async function updateOrderFraudReview(id, fraudStatus, notes = '') {
+  const sql = `
+    UPDATE orders
+    SET fraud_status = $2,
+        status = CASE WHEN $2 = 'approved' THEN 'Confirmed' WHEN $2 = 'blocked' THEN 'Cancelled' ELSE status END,
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING *;
+  `;
+  const res = await query(sql, [id, fraudStatus]);
+  return res.rows[0] || null;
+}
+
 module.exports = {
   createOrder,
   getOrderById,
   getUserOrders,
   getAllOrders,
   updateOrderStatus,
-  updateOrderPaymentStatus
+  updateOrderPaymentStatus,
+  updateOrderFraudReview
 };
 

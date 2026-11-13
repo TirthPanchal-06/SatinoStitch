@@ -5,6 +5,9 @@ const cartModel = require('../models/cartModel');
 const activityModel = require('../models/activityModel');
 const adminUpgradeModel = require('../models/adminUpgradeModel');
 const customerNotificationModel = require('../models/customerNotificationModel');
+const { evaluateOrderFraud } = require('../services/fraudDetectionService');
+const { verifyRazorpaySignature } = require('../services/paymentVerificationService');
+const { getClientIp } = require('../middleware/rateLimiter');
 const env = require('../config/env');
 
 async function getPaymentConfig(req, res) {
@@ -101,12 +104,41 @@ async function createOrder(req, res) {
     };
 
     const userId = req.user ? req.user.id : null;
+    const clientIp = getClientIp(req);
     const resolvedPaymentMethod = paymentMethod || 'cod';
+
+    // Verify cryptographic payment signature if paying by card/Razorpay
+    if (resolvedPaymentMethod === 'card' && (req.body.razorpayPaymentId || req.body.paymentId)) {
+      const payId = req.body.razorpayPaymentId || req.body.paymentId;
+      const rzpCheck = verifyRazorpaySignature({
+        razorpayOrderId: req.body.razorpayOrderId || req.body.orderId,
+        razorpayPaymentId: payId,
+        razorpaySignature: req.body.razorpaySignature,
+        clientIp
+      });
+
+      if (!rzpCheck.isValid) {
+        return res.status(400).json({
+          error: rzpCheck.error || 'Payment signature verification failed. Transaction rejected.'
+        });
+      }
+    }
+
     const resolvedPaymentStatus = (resolvedPaymentMethod === 'cod')
       ? 'pending'
       : (paymentStatus || (req.body && req.body.paymentStatus) || 'paid');
 
-    // 5. Persist order & order items to PostgreSQL
+    // 5. Run Fraud & Risk Scoring Engine
+    const fraudResult = await evaluateOrderFraud({
+      customer,
+      items: validatedItems,
+      total: grandTotal,
+      paymentMethod: resolvedPaymentMethod,
+      paymentId: paymentId || req.body.razorpayPaymentId || null,
+      clientIp
+    });
+
+    // 6. Persist order & order items to PostgreSQL
     const order = await orderModel.createOrder({
       id: orderNumber,
       userId,
@@ -121,24 +153,43 @@ async function createOrder(req, res) {
       total: grandTotal,
       paymentMethod: resolvedPaymentMethod,
       paymentStatus: resolvedPaymentStatus,
-      status: 'Confirmed',
+      status: fraudResult.riskLevel === 'high' ? 'Under Verification' : 'Confirmed',
       trackingNumber,
+      paymentId: paymentId || req.body.razorpayPaymentId || null,
+      razorpayOrderId: req.body.razorpayOrderId || null,
+      razorpayPaymentId: req.body.razorpayPaymentId || null,
+      razorpaySignature: req.body.razorpaySignature || null,
+      fraudScore: fraudResult.score,
+      fraudStatus: fraudResult.fraudStatus,
+      fraudFlags: fraudResult.flags,
+      clientIp,
+      riskLevel: fraudResult.riskLevel,
       items: validatedItems
     });
 
-    // 6. Clear user's server cart if authenticated
+    // 7. Clear user's server cart if authenticated
     if (userId) {
       await cartModel.clearUserCart(userId).catch(() => { });
     }
 
-    // 7. Log activity
+    // 8. Log activity
     activityModel.logCustomerActivity({
       userId,
       userName: customer.name,
       activityType: 'order_placed',
-      description: `New commission Order #${order.id} placed by ${customer.name} (Total: ₹${grandTotal.toLocaleString('en-IN')})`,
-      metadata: { orderId: order.id, total: grandTotal, paymentMethod: resolvedPaymentMethod }
+      description: `New commission Order #${order.id} placed by ${customer.name} (Total: ₹${grandTotal.toLocaleString('en-IN')}, Risk: ${fraudResult.riskLevel.toUpperCase()})`,
+      metadata: { orderId: order.id, total: grandTotal, paymentMethod: resolvedPaymentMethod, riskLevel: fraudResult.riskLevel }
     }).catch(() => { });
+
+    // High Risk Fraud Alert for Atelier Administration
+    if (fraudResult.riskLevel === 'high') {
+      adminUpgradeModel.createAdminNotification({
+        type: 'alert',
+        title: `Security Alert: High-Risk Order #${order.id}`,
+        message: `Fraud score ${fraudResult.score}/100. Anomalies detected: ${fraudResult.flags.join('; ')}`,
+        link: 'admin.html?tab=orders'
+      }).catch(() => {});
+    }
 
     // Customer Smart Notification: Order Confirmation
     customerNotificationModel.createNotification({
@@ -198,6 +249,11 @@ async function createOrder(req, res) {
         status: order.status,
         paymentMethod: order.payment_method,
         paymentStatus: order.payment_status,
+        fraudScore: order.fraud_score,
+        fraud_score: order.fraud_score,
+        riskLevel: order.risk_level,
+        risk_level: order.risk_level,
+        fraudStatus: order.fraud_status,
         estimatedDelivery: order.estimated_delivery
       }
     });
@@ -307,9 +363,43 @@ async function returnOrder(req, res) {
   }
 }
 
+async function verifyPayment(req, res) {
+  const razorpayOrderId = req.body?.razorpayOrderId || req.body?.razorpay_order_id;
+  const razorpayPaymentId = req.body?.razorpayPaymentId || req.body?.razorpay_payment_id;
+  const razorpaySignature = req.body?.razorpaySignature || req.body?.razorpay_signature;
+  const orderId = req.body?.orderId || req.body?.order_id;
+  const clientIp = getClientIp(req);
+
+  const verification = verifyRazorpaySignature({
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+    clientIp
+  });
+
+  if (!verification.isValid) {
+    return res.status(400).json({
+      error: verification.error || 'Payment signature verification failed. Potential tampering detected.',
+      verified: false
+    });
+  }
+
+  if (orderId) {
+    await orderModel.updateOrderPaymentStatus(orderId, 'paid').catch(() => {});
+  }
+
+  res.json({
+    success: true,
+    verified: true,
+    message: 'Payment cryptographically verified.',
+    verification
+  });
+}
+
 module.exports = {
   getPaymentConfig,
   createOrder,
+  verifyPayment,
   getOrderById,
   getUserOrders,
   cancelOrder,

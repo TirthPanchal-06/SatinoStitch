@@ -39,6 +39,10 @@ router.delete('/notifications', adminController.clearNotifications);
 router.delete('/notifications/:id', adminController.clearNotifications);
 
 router.get('/users/:id/orders', adminController.getUserOrdersAdmin);
+router.post('/users/:id/unlock', adminController.unlockUserAccount);
+router.put('/orders/:id/fraud-review', adminController.reviewOrderFraud);
+router.get('/security/audit-logs', adminController.getSecurityAuditLogs);
+router.get('/security/stats', adminController.getSecurityStats);
 router.get('/health', adminController.getSystemHealth);
 
 module.exports = router;

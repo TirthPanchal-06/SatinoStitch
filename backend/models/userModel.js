@@ -126,6 +126,84 @@ async function deleteUserAddress(userId, addrId) {
   return res.rowCount > 0;
 }
 
+/* ============================================================
+   Account Security & Lockout Methods
+   ============================================================ */
+async function recordFailedLogin(email, ip = null) {
+  const user = await getUserByEmail(email);
+  if (!user) return { userExists: false };
+
+  const attempts = (user.failed_login_attempts || 0) + 1;
+  let lockedUntil = user.locked_until;
+
+  // Lock account for 15 minutes after 5 consecutive failed attempts
+  if (attempts >= 5) {
+    const lockRes = await query(`
+      UPDATE users
+      SET failed_login_attempts = $2,
+          locked_until = NOW() + INTERVAL '15 minutes',
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, failed_login_attempts, locked_until;
+    `, [user.id, attempts]);
+    return {
+      userExists: true,
+      userId: user.id,
+      attempts,
+      lockedUntil: lockRes.rows[0]?.locked_until,
+      isLocked: true
+    };
+  }
+
+  await query(`
+    UPDATE users
+    SET failed_login_attempts = $2,
+        updated_at = NOW()
+    WHERE id = $1;
+  `, [user.id, attempts]);
+
+  return {
+    userExists: true,
+    userId: user.id,
+    attempts,
+    remainingAttempts: Math.max(0, 5 - attempts),
+    isLocked: false
+  };
+}
+
+async function recordSuccessfulLogin(userId, ip = null) {
+  const sql = `
+    UPDATE users
+    SET failed_login_attempts = 0,
+        locked_until = NULL,
+        last_login_at = NOW(),
+        last_login_ip = $2,
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING id, name, email, role, last_login_at;
+  `;
+  const res = await query(sql, [userId, ip]);
+  return res.rows[0];
+}
+
+async function unlockUser(userId) {
+  const sql = `
+    UPDATE users
+    SET failed_login_attempts = 0,
+        locked_until = NULL,
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING id, name, email, failed_login_attempts, locked_until;
+  `;
+  const res = await query(sql, [userId]);
+  return res.rows[0];
+}
+
+function isAccountLocked(user) {
+  if (!user || !user.locked_until) return false;
+  return new Date(user.locked_until) > new Date();
+}
+
 module.exports = {
   createUser,
   getUserByEmail,
@@ -136,6 +214,10 @@ module.exports = {
   updateUserRole,
   getUserAddresses,
   createUserAddress,
-  deleteUserAddress
+  deleteUserAddress,
+  recordFailedLogin,
+  recordSuccessfulLogin,
+  unlockUser,
+  isAccountLocked
 };
 
