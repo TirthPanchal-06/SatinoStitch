@@ -6388,20 +6388,21 @@
               const orderList = Array.isArray(orders) ? orders : [];
               window._cachedOrders = orderList;
 
-              // Compute counts for reference tabs
-              const onHoldCount = orderList.filter(o => o.status === 'On Hold').length;
-              const pendingCount = orderList.filter(o => o.status === 'Pending').length;
-              const readyCount = orderList.filter(o => o.status === 'Confirmed' || o.status === 'In Atelier').length;
-              const shippedCount = orderList.filter(o => o.status === 'Dispatched' || o.status === 'Delivered').length;
+              // Compute counts for tabs
+              const allCount = orderList.length;
+              const confirmedCount = orderList.filter(o => o.status === 'Confirmed').length;
+              const atelierCount = orderList.filter(o => o.status === 'In Atelier').length;
+              const dispatchedCount = orderList.filter(o => o.status === 'Dispatched').length;
+              const deliveredCount = orderList.filter(o => o.status === 'Delivered').length;
               const cancelledCount = orderList.filter(o => o.status === 'Cancelled').length;
+              const pendingCount = orderList.filter(o => o.status === 'Pending' || o.status === 'On Hold').length;
 
-              // Current active subtab (default 'pending' to exactly match reference screenshot!)
-              let currentSubTab = window._activeOrdersSubTab || 'pending';
+              // Current active subtab (default 'all' so admin immediately sees real orders!)
+              let currentSubTab = window._activeOrdersSubTab || 'all';
               let currentStatusFilter = '';
-              let currentDispatchFilter = '';
               let currentDateFilter = '';
               let currentSearchText = '';
-              let currentSearchPrefix = 'sku';
+              let currentSearchPrefix = 'order'; // Order ID is default search mode
 
               // Build shell of orders view
               container.innerHTML = `
@@ -6409,65 +6410,81 @@
                 <div class="admin-banner-poly">
                   <div class="admin-banner-poly-left">
                     <div class="admin-poly-icon-wrap">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                     </div>
                     <p class="admin-banner-poly-text">As per SatinoStitch packaging policy, all sellers must use Transparent Poly Packaging for their products on the platform.</p>
                   </div>
                   <div class="admin-poly-actions">
-                    <button class="admin-poly-btn" id="buy-poly-banner-btn">Buy Poly Packaging</button>
-                    <button class="admin-poly-btn" id="scan-labels-banner-btn">Scan Packaging Labels</button>
+                    <button class="admin-poly-btn" id="buy-poly-banner-btn" type="button">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                      <span>Buy Poly Packaging</span>
+                    </button>
+                    <button class="admin-poly-btn" id="scan-labels-banner-btn" type="button">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path><line x1="7" y1="12" x2="17" y2="12"></line></svg>
+                      <span>Scan Packaging Labels</span>
+                    </button>
                   </div>
                 </div>
 
-                <!-- Tabs Row (Matches Reference Screenshot) -->
+                <!-- Tabs Row (All Orders, Confirmed, In Atelier, Dispatched, Delivered, Cancelled) -->
                 <div class="admin-tabs-row" id="orders-status-tabs">
-                  <button class="admin-tab-item ${currentSubTab === 'on_hold' ? 'active' : ''}" data-subtab="on_hold">On Hold</button>
-                  <button class="admin-tab-item ${currentSubTab === 'pending' ? 'active' : ''}" data-subtab="pending">Pending (${pendingCount})</button>
-                  <button class="admin-tab-item ${currentSubTab === 'ready_to_ship' ? 'active' : ''}" data-subtab="ready_to_ship">Ready to Ship</button>
-                  <button class="admin-tab-item ${currentSubTab === 'shipped' ? 'active' : ''}" data-subtab="shipped">Shipped</button>
-                  <button class="admin-tab-item ${currentSubTab === 'cancelled' ? 'active' : ''}" data-subtab="cancelled">Cancelled</button>
+                  <button class="admin-tab-item ${currentSubTab === 'all' ? 'active' : ''}" data-subtab="all" type="button">
+                    All Orders <span class="admin-tab-count-badge">${allCount}</span>
+                  </button>
+                  <button class="admin-tab-item ${currentSubTab === 'confirmed' ? 'active' : ''}" data-subtab="confirmed" type="button">
+                    Confirmed <span class="admin-tab-count-badge">${confirmedCount}</span>
+                  </button>
+                  <button class="admin-tab-item ${currentSubTab === 'atelier' ? 'active' : ''}" data-subtab="atelier" type="button">
+                    In Atelier <span class="admin-tab-count-badge">${atelierCount}</span>
+                  </button>
+                  <button class="admin-tab-item ${currentSubTab === 'dispatched' ? 'active' : ''}" data-subtab="dispatched" type="button">
+                    Dispatched <span class="admin-tab-count-badge">${dispatchedCount}</span>
+                  </button>
+                  <button class="admin-tab-item ${currentSubTab === 'delivered' ? 'active' : ''}" data-subtab="delivered" type="button">
+                    Delivered <span class="admin-tab-count-badge">${deliveredCount}</span>
+                  </button>
+                  <button class="admin-tab-item ${currentSubTab === 'cancelled' ? 'active' : ''}" data-subtab="cancelled" type="button">
+                    Cancelled <span class="admin-tab-count-badge">${cancelledCount}</span>
+                  </button>
+                  <button class="admin-tab-item ${currentSubTab === 'pending' ? 'active' : ''}" data-subtab="pending" type="button">
+                    On Hold / Pending <span class="admin-tab-count-badge">${pendingCount}</span>
+                  </button>
                 </div>
 
-                <!-- Filter Bar (Matches Reference Screenshot) -->
+                <!-- Modern Toolbar & Global Search -->
                 <div class="admin-filter-bar">
                   <div class="admin-filter-left">
-                    <span class="admin-filter-label">Filter by:</span>
+                    <span class="admin-filter-label">Filter:</span>
                     <select class="admin-filter-select" id="filter-order-status">
-                      <option value="">Order Status</option>
-                      <option value="Confirmed">Confirmed (${orderList.filter(o => o.status === 'Confirmed').length})</option>
-                      <option value="In Atelier">In Atelier (${orderList.filter(o => o.status === 'In Atelier').length})</option>
-                      <option value="Dispatched">Dispatched (${orderList.filter(o => o.status === 'Dispatched').length})</option>
-                      <option value="Delivered">Delivered (${orderList.filter(o => o.status === 'Delivered').length})</option>
-                      <option value="Cancelled">Cancelled (${orderList.filter(o => o.status === 'Cancelled').length})</option>
-                      <option value="Pending">Pending (0)</option>
-                      <option value="On Hold">On Hold (0)</option>
-                    </select>
-                    <select class="admin-filter-select" id="filter-dispatch-date">
-                      <option value="">Dispatch Date</option>
-                      <option value="today">Today</option>
-                      <option value="tomorrow">Tomorrow</option>
-                      <option value="2days">Next 2 Days</option>
-                      <option value="week">This Week</option>
+                      <option value="">All Statuses</option>
+                      <option value="Confirmed">Confirmed (${confirmedCount})</option>
+                      <option value="In Atelier">In Atelier (${atelierCount})</option>
+                      <option value="Dispatched">Dispatched (${dispatchedCount})</option>
+                      <option value="Delivered">Delivered (${deliveredCount})</option>
+                      <option value="Cancelled">Cancelled (${cancelledCount})</option>
                     </select>
                     <select class="admin-filter-select" id="filter-order-date">
-                      <option value="">Order Date</option>
+                      <option value="">All Time</option>
                       <option value="today">Today</option>
                       <option value="7days">Last 7 Days</option>
                       <option value="30days">Last 30 Days</option>
-                      <option value="all">All Dates</option>
                     </select>
+                    <button class="admin-filter-reset-btn" id="btn-reset-filters" type="button" title="Reset all filters">
+                      ✕ Reset Filters
+                    </button>
                   </div>
                   <div class="admin-filter-right">
                     <div class="admin-search-group">
                       <select class="admin-search-prefix" id="search-prefix-select">
-                        <option value="sku">SKU ID</option>
-                        <option value="order">Order ID</option>
-                        <option value="patron">Patron</option>
-                        <option value="tracking">Tracking #</option>
+                        <option value="order" ${currentSearchPrefix === 'order' ? 'selected' : ''}>Order ID</option>
+                        <option value="patron" ${currentSearchPrefix === 'patron' ? 'selected' : ''}>Patron Name</option>
+                        <option value="tracking" ${currentSearchPrefix === 'tracking' ? 'selected' : ''}>Tracking #</option>
+                        <option value="sku" ${currentSearchPrefix === 'sku' ? 'selected' : ''}>SKU / Product</option>
                       </select>
                       <div class="admin-search-wrap">
-                        <input type="text" class="admin-search-input" id="order-search-field" placeholder="Search orders...">
                         <svg class="admin-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <input type="text" class="admin-search-input" id="order-search-field" placeholder="Search order (e.g. #SS8451842)..." value="${esc(currentSearchText)}">
+                        <button class="admin-search-clear-btn" id="btn-clear-search" type="button" title="Clear search" style="display:none">✕</button>
                       </div>
                     </div>
                   </div>
@@ -6486,70 +6503,139 @@
                 const targetArea = $('#orders-dynamic-content');
                 if (!targetArea) return;
 
-                // 1. Filter by active subtab
+                const rawQ = currentSearchText.trim();
+                const q = rawQ.toLowerCase();
+                const qNoHash = q.replace(/^[#\s]+/, '').trim();
+
                 let filtered = orderList.slice();
-                if (currentSubTab === 'pending') {
-                  filtered = filtered.filter(o => o.status === 'Pending');
-                } else if (currentSubTab === 'on_hold') {
-                  filtered = filtered.filter(o => o.status === 'On Hold');
-                } else if (currentSubTab === 'ready_to_ship') {
-                  filtered = filtered.filter(o => o.status === 'Confirmed' || o.status === 'In Atelier');
-                } else if (currentSubTab === 'shipped') {
-                  filtered = filtered.filter(o => o.status === 'Dispatched' || o.status === 'Delivered');
-                } else if (currentSubTab === 'cancelled') {
-                  filtered = filtered.filter(o => o.status === 'Cancelled');
+
+                // Global Search when query entered!
+                if (rawQ) {
+                  filtered = filtered.filter(o => {
+                    const idStr = String(o.id || '').toLowerCase();
+                    const idMatch = idStr.includes(qNoHash) || ('#' + idStr).includes(q);
+                    const nameMatch = String(o.customer_name || '').toLowerCase().includes(q);
+                    const emailMatch = String(o.customer_email || '').toLowerCase().includes(q);
+                    const phoneMatch = String(o.customer_phone || '').includes(qNoHash);
+                    const trackingMatch = String(o.tracking_number || '').toLowerCase().includes(qNoHash);
+                    const skuMatch = (o.items || []).some(it => 
+                      String(it.productId || it.id || '').toLowerCase().includes(qNoHash) ||
+                      String(it.name || '').toLowerCase().includes(q)
+                    );
+
+                    if (currentSearchPrefix === 'order') return idMatch;
+                    if (currentSearchPrefix === 'patron') return nameMatch || emailMatch || phoneMatch;
+                    if (currentSearchPrefix === 'tracking') return trackingMatch;
+                    if (currentSearchPrefix === 'sku') return skuMatch || idMatch;
+                    return idMatch || nameMatch || emailMatch || trackingMatch || skuMatch;
+                  });
+                } else {
+                  // Subtab filtering when NOT searching
+                  if (currentSubTab === 'confirmed') {
+                    filtered = filtered.filter(o => o.status === 'Confirmed');
+                  } else if (currentSubTab === 'atelier') {
+                    filtered = filtered.filter(o => o.status === 'In Atelier');
+                  } else if (currentSubTab === 'dispatched') {
+                    filtered = filtered.filter(o => o.status === 'Dispatched');
+                  } else if (currentSubTab === 'delivered') {
+                    filtered = filtered.filter(o => o.status === 'Delivered');
+                  } else if (currentSubTab === 'cancelled') {
+                    filtered = filtered.filter(o => o.status === 'Cancelled');
+                  } else if (currentSubTab === 'pending') {
+                    filtered = filtered.filter(o => o.status === 'Pending' || o.status === 'On Hold');
+                  }
                 }
 
-                // 2. Filter by Status dropdown
+                // Dropdown status filter
                 if (currentStatusFilter) {
                   filtered = filtered.filter(o => o.status === currentStatusFilter);
                 }
 
-                // 3. Filter by search query
-                if (currentSearchText) {
-                  const q = currentSearchText.toLowerCase();
-                  filtered = filtered.filter(o => {
-                    if (currentSearchPrefix === 'sku') {
-                      return (o.items || []).some(it => String(it.productId || it.id).toLowerCase().includes(q) || String(it.name || '').toLowerCase().includes(q)) || String(o.id).toLowerCase().includes(q);
-                    } else if (currentSearchPrefix === 'order') {
-                      return String(o.id).toLowerCase().includes(q);
-                    } else if (currentSearchPrefix === 'patron') {
-                      return String(o.customer_name || '').toLowerCase().includes(q) || String(o.customer_email || '').toLowerCase().includes(q);
-                    } else if (currentSearchPrefix === 'tracking') {
-                      return String(o.tracking_number || '').toLowerCase().includes(q);
-                    }
-                    return String(o.id).toLowerCase().includes(q) || String(o.customer_name || '').toLowerCase().includes(q);
-                  });
+                // Date filter
+                if (currentDateFilter) {
+                  const now = new Date();
+                  if (currentDateFilter === 'today') {
+                    const todayStr = now.toISOString().split('T')[0];
+                    filtered = filtered.filter(o => o.created_at && o.created_at.startsWith(todayStr));
+                  } else if (currentDateFilter === '7days') {
+                    const d7 = new Date(now.getTime() - 7 * 86400000);
+                    filtered = filtered.filter(o => new Date(o.created_at) >= d7);
+                  } else if (currentDateFilter === '30days') {
+                    const d30 = new Date(now.getTime() - 30 * 86400000);
+                    filtered = filtered.filter(o => new Date(o.created_at) >= d30);
+                  }
                 }
 
                 // Cache for filtered CSV export
                 window._currentFilteredOrders = filtered;
 
-                // EMPTY STATE (Matches Reference Image Exactly)
+                // Toggle Clear Search Button
+                const clearBtn = $('#btn-clear-search');
+                if (clearBtn) {
+                  clearBtn.style.display = rawQ ? 'flex' : 'none';
+                  clearBtn.onclick = () => {
+                    currentSearchText = '';
+                    const searchInput = $('#order-search-field');
+                    if (searchInput) searchInput.value = '';
+                    clearBtn.style.display = 'none';
+                    renderOrdersContent();
+                  };
+                }
+
+                // EMPTY STATE
                 if (filtered.length === 0) {
                   const tabTitlesMap = {
-                    'pending': 'Pending',
-                    'on_hold': 'On Hold',
-                    'ready_to_ship': 'Ready to Ship',
-                    'shipped': 'Shipped',
-                    'cancelled': 'Cancelled'
+                    'all': 'All',
+                    'confirmed': 'Confirmed',
+                    'atelier': 'In Atelier',
+                    'dispatched': 'Dispatched',
+                    'delivered': 'Delivered',
+                    'cancelled': 'Cancelled',
+                    'pending': 'Pending'
                   };
                   const subLabel = tabTitlesMap[currentSubTab] || 'Matching';
                   targetArea.innerHTML = `
                     <div class="admin-empty-state">
                       <img src="images/admin-empty-box-transparent.png" alt="No Orders" class="admin-empty-box-img">
-                      <div class="admin-empty-title">No ${subLabel} Orders</div>
-                      <div class="admin-empty-subtitle">You're all caught up!</div>
+                      <div class="admin-empty-title">
+                        ${rawQ ? `No orders found matching "${esc(rawQ)}"` : `No ${subLabel} Orders`}
+                      </div>
+                      <div class="admin-empty-subtitle">
+                        ${rawQ ? `Check order ID or clear the search to view all ${allCount} orders.` : `You're all caught up!`}
+                      </div>
+                      <button class="admin-poly-btn" id="btn-empty-reset" type="button" style="margin-top:1.2rem;background:#4F46E5;color:#fff;border-color:#4F46E5">
+                        View All Orders (${allCount})
+                      </button>
                     </div>
                   `;
+                  const resetEmptyBtn = $('#btn-empty-reset');
+                  if (resetEmptyBtn) {
+                    resetEmptyBtn.onclick = () => {
+                      currentSearchText = '';
+                      currentStatusFilter = '';
+                      currentDateFilter = '';
+                      currentSubTab = 'all';
+                      window._activeOrdersSubTab = 'all';
+                      const sIn = $('#order-search-field');
+                      if (sIn) sIn.value = '';
+                      const stDrop = $('#filter-order-status');
+                      if (stDrop) stDrop.value = '';
+                      const dtDrop = $('#filter-order-date');
+                      if (dtDrop) dtDrop.value = '';
+                      $$('#orders-status-tabs .admin-tab-item').forEach(b => {
+                        b.classList.toggle('active', b.dataset.subtab === 'all');
+                      });
+                      renderOrdersContent();
+                    };
+                  }
                   return;
                 }
 
                 // DATA TABLE (Real Orders from PostgreSQL)
                 targetArea.innerHTML = `
                   <div class="admin-orders-card">
-                    <div class="admin-table-wrap">
-                      <table class="admin-table">
+                    <div class="admin-table-wrap" style="margin:0;border:none">
+                      <table class="admin-orders-table">
                         <thead>
                           <tr>
                             <th>Order ID &amp; Tracking</th>
@@ -6559,7 +6645,7 @@
                             <th>Payment</th>
                             <th>Security &amp; Risk</th>
                             <th>Fulfillment Status</th>
-                            <th>Action</th>
+                            <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -6572,7 +6658,7 @@
                             return `
                               <tr>
                                 <td>
-                                  <strong style="color:#111827">#${esc(o.id)}</strong>
+                                  <strong style="color:#111827;font-size:0.92rem">#${esc(o.id)}</strong>
                                   <div style="font-size:0.76rem;color:#6B7280;margin-top:2px;display:flex;align-items:center;gap:4px">
                                     <span>${esc(o.tracking_number || 'TRK-SS-PENDING')}</span>
                                   </div>
@@ -6586,11 +6672,11 @@
                                   <div style="font-size:0.74rem;color:#9CA3AF">${new Date(o.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
                                 </td>
                                 <td>
-                                  <strong style="color:#111827">${money(o.total)}</strong>
+                                  <strong style="color:#111827;font-size:0.92rem">${money(o.total)}</strong>
                                 </td>
                                 <td>
                                   <div style="display:flex;align-items:center;gap:0.35rem">
-                                    <span class="order-status-pill ${o.payment_status === 'paid' ? 'paid' : 'pending'}">${(o.payment_status || 'Pending').toUpperCase()}</span>
+                                    <span class="order-status-pill ${o.payment_status === 'paid' ? 'delivered' : 'pending'}">${(o.payment_status || 'Pending').toUpperCase()}</span>
                                     <span style="font-size:0.75rem;color:#6B7280">(${(o.payment_method || 'COD').toUpperCase()})</span>
                                   </div>
                                   ${o.payment_status !== 'paid' ? `
@@ -6628,7 +6714,7 @@
                                 </td>
                                 <td>
                                   <div style="display:flex;align-items:center;gap:0.4rem">
-                                    <select class="order-status-select" data-order-id="${o.id}" style="background:#fff;border:1px solid #D1D5DB;border-radius:4px;padding:4px 6px;font-size:0.8rem">
+                                    <select class="order-status-select" data-order-id="${o.id}">
                                       ${['Confirmed', 'In Atelier', 'Dispatched', 'Delivered', 'Cancelled'].map(st => `
                                         <option value="${st}" ${st === o.status ? 'selected' : ''}>${st}</option>
                                       `).join('')}
@@ -6638,8 +6724,11 @@
                                 </td>
                                 <td>
                                   <div style="display:flex;gap:0.4rem;align-items:center">
-                                    <button class="btn gold sm save-status-btn" data-order-id="${o.id}" style="background:#1E1E20!important;color:#fff!important;border:none!important;border-radius:4px;padding:4px 10px;font-size:0.78rem">Update</button>
-                                    <button class="btn sm print-order-invoice-btn" data-order-id="${o.id}" title="Print GST Tax Invoice" style="background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;border-radius:4px;padding:4px 8px;font-size:0.78rem;cursor:pointer">📄 Invoice</button>
+                                    <button class="save-status-btn" data-order-id="${o.id}">Update</button>
+                                    <button class="print-order-invoice-btn" data-order-id="${o.id}" title="Print GST Tax Invoice">
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                                      <span>Invoice</span>
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -6714,21 +6803,59 @@
               });
 
               // Status Dropdown Filter Event
-              $('#filter-order-status').onchange = (e) => {
-                currentStatusFilter = e.target.value;
-                renderOrdersContent();
-              };
+              const statusSelect = $('#filter-order-status');
+              if (statusSelect) {
+                statusSelect.onchange = (e) => {
+                  currentStatusFilter = e.target.value;
+                  renderOrdersContent();
+                };
+              }
+
+              // Date Dropdown Filter Event
+              const dateSelect = $('#filter-order-date');
+              if (dateSelect) {
+                dateSelect.onchange = (e) => {
+                  currentDateFilter = e.target.value;
+                  renderOrdersContent();
+                };
+              }
+
+              // Reset Filters Button Event
+              const resetBtn = $('#btn-reset-filters');
+              if (resetBtn) {
+                resetBtn.onclick = () => {
+                  currentSearchText = '';
+                  currentStatusFilter = '';
+                  currentDateFilter = '';
+                  currentSubTab = 'all';
+                  window._activeOrdersSubTab = 'all';
+                  const sIn = $('#order-search-field');
+                  if (sIn) sIn.value = '';
+                  if (statusSelect) statusSelect.value = '';
+                  if (dateSelect) dateSelect.value = '';
+                  $$('#orders-status-tabs .admin-tab-item').forEach(b => {
+                    b.classList.toggle('active', b.dataset.subtab === 'all');
+                  });
+                  renderOrdersContent();
+                };
+              }
 
               // Search Field Event
-              $('#order-search-field').oninput = (e) => {
-                currentSearchText = e.target.value.trim();
-                renderOrdersContent();
-              };
+              const searchInput = $('#order-search-field');
+              if (searchInput) {
+                searchInput.oninput = (e) => {
+                  currentSearchText = e.target.value.trim();
+                  renderOrdersContent();
+                };
+              }
 
-              $('#search-prefix-select').onchange = (e) => {
-                currentSearchPrefix = e.target.value;
-                renderOrdersContent();
-              };
+              const prefixSelect = $('#search-prefix-select');
+              if (prefixSelect) {
+                prefixSelect.onchange = (e) => {
+                  currentSearchPrefix = e.target.value;
+                  renderOrdersContent();
+                };
+              }
 
               // Initial Render
               renderOrdersContent();

@@ -22,7 +22,7 @@ function mapProductRow(r) {
     fabric: r.fabric,
     desc: r.description,
     description: r.description,
-    sizes: Array.isArray(r.sizes) ? r.sizes : (typeof r.sizes === 'string' ? JSON.parse(r.sizes || '["XS","S","M","L","XL"]') : ["XS","S","M","L","XL"]),
+    sizes: Array.isArray(r.sizes) ? r.sizes : (typeof r.sizes === 'string' ? JSON.parse(r.sizes || '["XS","S","M","L","XL"]') : ["XS", "S", "M", "L", "XL"]),
     colors: Array.isArray(r.colors) ? r.colors : (typeof r.colors === 'string' ? JSON.parse(r.colors || '[]') : []),
     model3d: r.garment_model_url || r.model_3d || null,
     model_3d: r.garment_model_url || r.model_3d || null,
@@ -288,12 +288,12 @@ async function recordProductView(productId, userId, ipAddress) {
   await query(
     `INSERT INTO product_views (product_id, user_id, ip_address) VALUES ($1, $2, $3);`,
     [productId, userId || null, ipAddress || null]
-  ).catch(() => {});
+  ).catch(() => { });
 
   await query(
     `UPDATE products SET views_count = views_count + 1 WHERE id = $1;`,
     [productId]
-  ).catch(() => {});
+  ).catch(() => { });
 }
 
 /* Inventory Summary */
