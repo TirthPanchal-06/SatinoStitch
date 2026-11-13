@@ -10,3 +10,4 @@ router.delete('/', optionalAuth, customerNotificationController.clearAll);
 router.post('/back-in-stock-subscribe', optionalAuth, customerNotificationController.subscribeBackInStock);
 
 module.exports = router;
+
