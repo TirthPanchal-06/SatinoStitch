@@ -4,6 +4,7 @@ const couponModel = require('../models/couponModel');
 const cartModel = require('../models/cartModel');
 const activityModel = require('../models/activityModel');
 const adminUpgradeModel = require('../models/adminUpgradeModel');
+const customerNotificationModel = require('../models/customerNotificationModel');
 const env = require('../config/env');
 
 async function getPaymentConfig(req, res) {
@@ -137,6 +138,19 @@ async function createOrder(req, res) {
       activityType: 'order_placed',
       description: `New commission Order #${order.id} placed by ${customer.name} (Total: ₹${grandTotal.toLocaleString('en-IN')})`,
       metadata: { orderId: order.id, total: grandTotal, paymentMethod: resolvedPaymentMethod }
+    }).catch(() => { });
+
+    // Customer Smart Notification: Order Confirmation
+    customerNotificationModel.createNotification({
+      userId: userId || null,
+      type: 'order_confirmation',
+      title: `Haute Couture Order Confirmed (#${order.id})`,
+      message: `Commission for ${customer.name} reserved for ₹${grandTotal.toLocaleString('en-IN')}. Master atelier artisan assigned for precision stitching & packaging.`,
+      badge: '📦 Order Confirmed',
+      icon: 'package',
+      image: validatedItems[0]?.image || 'images/emblem.png',
+      link: `account.html?tab=orders&id=${order.id}`,
+      metadata: { orderId: order.id, total: grandTotal, status: 'Confirmed' }
     }).catch(() => { });
 
     // Real-time admin notification

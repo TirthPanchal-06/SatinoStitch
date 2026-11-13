@@ -337,7 +337,7 @@
             <!-- Header Action Icons -->
             <div class="tools">
               <div class="notif-wrapper">
-                <button class="tool-link notif-btn" id="header-notif-btn" type="button" aria-label="Customer Notifications" title="Atelier Concierge Notifications">
+                <button class="tool-link notif-btn" id="header-notif-btn" type="button" aria-label="Customer Notifications" title="Atelier Smart Notifications">
                   <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                     <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
@@ -346,11 +346,23 @@
                 </button>
                 <div class="notif-dropdown" id="notif-dropdown">
                   <div class="notif-dropdown-header">
-                    <h4><span>🔔</span> Atelier Concierge Notifications</h4>
-                    <button class="notif-dropdown-clear" id="notif-clear-btn" type="button">Clear All</button>
+                    <div class="notif-header-top">
+                      <h4><span>🔔</span> Atelier Smart Notifications</h4>
+                      <div class="notif-header-actions">
+                        <button class="notif-action-link" id="notif-read-all-btn" type="button" title="Mark all notifications as read">Mark all read</button>
+                        <span class="notif-action-sep">•</span>
+                        <button class="notif-action-link" id="notif-clear-btn" type="button" title="Clear all notifications">Clear</button>
+                      </div>
+                    </div>
+                    <div class="notif-tabs-strip" id="notif-tabs-strip">
+                      <button class="notif-tab active" data-filter="all" type="button">All <span class="notif-tab-badge" id="notif-count-all">0</span></button>
+                      <button class="notif-tab" data-filter="orders" type="button">Orders &amp; Dispatch <span class="notif-tab-badge" id="notif-count-orders">0</span></button>
+                      <button class="notif-tab" data-filter="stock" type="button">Restocks <span class="notif-tab-badge" id="notif-count-stock">0</span></button>
+                      <button class="notif-tab" data-filter="promos" type="button">VIP Offers <span class="notif-tab-badge" id="notif-count-promos">0</span></button>
+                    </div>
                   </div>
                   <div class="notif-list" id="notif-list">
-                    <div class="notif-empty">No recent notifications. Save pieces to your trousseau to receive seasonal styling advice &amp; patron reviews!</div>
+                    <div class="notif-empty">Loading bespoke atelier notifications...</div>
                   </div>
                 </div>
               </div>
@@ -389,22 +401,60 @@
         if (notifBtn && notifDrop) {
           notifBtn.onclick = (e) => {
             e.stopPropagation();
-            notifDrop.classList.toggle('show');
-            const notifs = db.get('customer_notifications', []);
-            notifs.forEach(n => n.read = true);
-            db.set('customer_notifications', notifs);
-            updateNotificationBellUI();
+            const isOpen = notifDrop.classList.contains('show');
+            if (!isOpen) {
+              notifDrop.classList.add('show');
+              fetchCustomerNotifications();
+            } else {
+              notifDrop.classList.remove('show');
+            }
           };
+
           document.addEventListener('click', (e) => {
             if (!e.target.closest('.notif-wrapper')) {
               notifDrop.classList.remove('show');
             }
           });
-          $('#notif-clear-btn')?.addEventListener('click', () => {
-            db.set('customer_notifications', []);
-            updateNotificationBellUI();
+
+          // Category Tab filter clicking
+          $$('.notif-tab').forEach(tab => {
+            tab.onclick = (e) => {
+              e.stopPropagation();
+              $$('.notif-tab').forEach(t => t.classList.remove('active'));
+              tab.classList.add('active');
+              customerNotifFilter = tab.dataset.filter || 'all';
+              renderCustomerNotificationsUI();
+            };
           });
-          updateNotificationBellUI();
+
+          // Mark all read button
+          $('#notif-read-all-btn')?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+              await fetchAuth('/api/notifications/read-all', { method: 'PUT' });
+              customerNotifications.forEach(n => n.is_read = true);
+              renderCustomerNotificationsUI();
+              toast('All smart notifications marked as read.');
+            } catch (err) {
+              console.warn(err);
+            }
+          });
+
+          // Clear all notifications button
+          $('#notif-clear-btn')?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+              await fetchAuth('/api/notifications', { method: 'DELETE' });
+              customerNotifications = [];
+              renderCustomerNotificationsUI();
+              toast('Concierge notifications inbox cleared.');
+            } catch (err) {
+              console.warn(err);
+            }
+          });
+
+          // Initial load of notifications to set badge count
+          fetchCustomerNotifications();
         }
 
         // Live PostgreSQL Website Settings Sync for Storefront
@@ -888,50 +938,219 @@
     updateNotificationBellUI();
   }
 
-  function updateNotificationBellUI() {
-    const badge = $('#notif-badge');
-    const notifs = db.get('customer_notifications', []);
-    const unread = notifs.filter(n => !n.read).length;
+  /* ---------- Smart Customer Notifications System ---------- */
+  let customerNotifications = [];
+  let customerNotifFilter = 'all';
 
+  function formatNotificationTime(dateStr) {
+    if (!dateStr) return 'Recently';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Recently';
+    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (diffSec < 60) return 'Just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+  }
+
+  async function fetchCustomerNotifications() {
+    try {
+      const res = await fetchAuth('/api/notifications');
+      if (res.ok) {
+        const data = await res.json();
+        customerNotifications = data.notifications || [];
+        renderCustomerNotificationsUI(data.counts, data.unreadCount);
+        return customerNotifications;
+      }
+    } catch (err) {
+      console.warn('Could not fetch notifications from server:', err);
+    }
+    // Fallback to local storage if offline
+    customerNotifications = db.get('customer_notifications', []);
+    renderCustomerNotificationsUI();
+    return customerNotifications;
+  }
+
+  function renderCustomerNotificationsUI(counts = null, unreadCount = null) {
+    const unread = unreadCount !== null ? unreadCount : customerNotifications.filter(n => !n.is_read).length;
+    const badge = $('#notif-badge');
     if (badge) {
       badge.textContent = unread;
       badge.style.display = unread > 0 ? 'inline-block' : 'none';
     }
 
+    const cAll = customerNotifications.length;
+    const cOrders = customerNotifications.filter(n => n.type === 'order_confirmation' || n.type === 'shipping_update').length;
+    const cStock = customerNotifications.filter(n => n.type === 'back_in_stock').length;
+    const cPromos = customerNotifications.filter(n => n.type === 'promotional').length;
+
+    if ($('#notif-count-all')) $('#notif-count-all').textContent = counts?.all ?? cAll;
+    if ($('#notif-count-orders')) $('#notif-count-orders').textContent = counts?.orders ?? cOrders;
+    if ($('#notif-count-stock')) $('#notif-count-stock').textContent = counts?.stock ?? cStock;
+    if ($('#notif-count-promos')) $('#notif-count-promos').textContent = counts?.promos ?? cPromos;
+
+    let filtered = customerNotifications;
+    if (customerNotifFilter === 'orders') {
+      filtered = customerNotifications.filter(n => n.type === 'order_confirmation' || n.type === 'shipping_update');
+    } else if (customerNotifFilter === 'stock') {
+      filtered = customerNotifications.filter(n => n.type === 'back_in_stock');
+    } else if (customerNotifFilter === 'promos') {
+      filtered = customerNotifications.filter(n => n.type === 'promotional');
+    }
+
     const list = $('#notif-list');
-    if (list) {
-      if (notifs.length === 0) {
-        list.innerHTML = '<div class="notif-empty">No recent notifications. Save pieces to your trousseau to receive seasonal styling advice &amp; patron reviews!</div>';
-      } else {
-        list.innerHTML = notifs.map(n => `
-          <div class="notif-item ${n.read ? 'read' : 'unread'}" data-nid="${n.id}">
-            <img class="notif-item-img" src="${n.productImage}" alt="${esc(n.productName)}">
-            <div style="flex:1">
-              <div style="font-size:0.68rem;font-weight:700;color:var(--gold);text-transform:uppercase">${esc(n.badge)}</div>
-              <div class="notif-item-title">${esc(n.headline)}</div>
-              <div class="notif-item-text">${esc(n.compliment)}</div>
-              <div class="notif-item-review">"${esc(n.review)}" ★★★★★</div>
-              <div class="notif-item-footer">
-                <span class="notif-item-time">${n.timestamp}</span>
-                <button class="btn sm gold notif-add-bag-btn" data-pid="${n.productId}" style="padding:2px 8px;font-size:0.72rem;cursor:pointer">Add to Bag</button>
+    if (!list) return;
+
+    if (filtered.length === 0) {
+      const emptyMessages = {
+        all: 'No notifications in your trousseau concierge inbox.',
+        orders: 'No active orders or shipping dispatches currently in transit.',
+        stock: 'No restock alerts at this time. Subscribe on any creation page for instant notifications.',
+        promos: 'No active VIP promo privileges currently available.'
+      };
+      list.innerHTML = `<div class="notif-empty">${emptyMessages[customerNotifFilter] || emptyMessages.all}</div>`;
+      return;
+    }
+
+    list.innerHTML = filtered.map(n => {
+      const isUnread = !n.is_read;
+      let meta = {};
+      try {
+        meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata || '{}') : (n.metadata || {});
+      } catch {}
+
+      let pillClass = 'order';
+      let pillLabel = n.badge || 'Atelier Update';
+      let typeClass = 'type-' + n.type;
+      if (n.type === 'shipping_update') pillClass = 'shipping';
+      else if (n.type === 'back_in_stock') pillClass = 'stock';
+      else if (n.type === 'promotional') pillClass = 'promo';
+
+      const timeStr = formatNotificationTime(n.created_at);
+
+      let actionHtml = '';
+      if (n.type === 'order_confirmation') {
+        actionHtml = `
+          <a href="${n.link || 'account.html?tab=orders'}" class="notif-cta-btn solid">
+            <span>📦</span> View Commission &rarr;
+          </a>
+        `;
+      } else if (n.type === 'shipping_update') {
+        const trk = meta.trackingNumber || 'SS-EXP-847291';
+        actionHtml = `
+          <button class="notif-cta-btn notif-copy-trk-btn" data-trk="${trk}" type="button">
+            <span>📋</span> Copy Tracking
+          </button>
+          <a href="${n.link || 'account.html?tab=orders'}" class="notif-cta-btn solid">
+            <span>🚚</span> Live Tracking &rarr;
+          </a>
+        `;
+      } else if (n.type === 'back_in_stock') {
+        const pid = meta.productId;
+        actionHtml = `
+          <a href="${n.link || 'shop.html'}" class="notif-cta-btn">View Piece</a>
+          ${pid ? `<button class="notif-cta-btn solid notif-add-bag-btn" data-pid="${pid}" type="button"><span>✦</span> Add to Bag</button>` : ''}
+        `;
+      } else if (n.type === 'promotional') {
+        const code = meta.promoCode || 'HERITAGE10';
+        actionHtml = `
+          <span class="notif-promo-copy-chip notif-copy-code-chip" data-code="${code}" title="Click to copy privilege code">
+            <span>🏷️</span> ${code} (Tap to Copy)
+          </span>
+          <a href="${n.link || 'shop.html'}" class="notif-cta-btn solid">Shop Trousseau &rarr;</a>
+        `;
+      }
+
+      let extraBox = '';
+      if (n.type === 'shipping_update' && (meta.courier || meta.trackingNumber)) {
+        extraBox = `<div class="notif-extra-box"><strong>Courier:</strong> ${esc(meta.courier || 'Bluedart Apex Express')} &bull; <strong>Tracking:</strong> ${esc(meta.trackingNumber || 'Pending')} &bull; <strong>ETA:</strong> ${esc(meta.eta || '48 Hours')}</div>`;
+      } else if (n.type === 'back_in_stock' && meta.stock) {
+        extraBox = `<div class="notif-extra-box"><strong>Limited Wave:</strong> ${meta.stock} handcrafted pieces replenished &bull; Price: ${money(meta.price || 14990)}</div>`;
+      }
+
+      return `
+        <div class="notif-item ${isUnread ? 'unread' : 'read'} ${typeClass}" data-id="${n.id}">
+          <img class="notif-item-img" src="${n.image || 'images/emblem.png'}" alt="Notification Preview">
+          <div class="notif-body">
+            <div class="notif-meta-row">
+              <span class="notif-pill ${pillClass}">${esc(pillLabel)}</span>
+              <div style="display:flex;align-items:center;gap:0.4rem">
+                <span class="notif-time">${timeStr}</span>
+                ${isUnread ? `<span class="notif-unread-dot" title="Unread notification"></span>` : ''}
+              </div>
+            </div>
+            <div class="notif-item-title">${esc(n.title)}</div>
+            <div class="notif-item-text">${esc(n.message)}</div>
+            ${extraBox}
+            <div class="notif-actions-row">
+              <div class="notif-action-btn-group">
+                ${actionHtml}
               </div>
             </div>
           </div>
-        `).join('');
+        </div>
+      `;
+    }).join('');
 
-        $$('.notif-add-bag-btn').forEach(btn => {
-          btn.onclick = (e) => {
-            e.stopPropagation();
-            const pid = Number(btn.dataset.pid);
-            addToCart(pid, 'M', 1);
-            toast('Creation added to your shopping bag!', 'cart.html', 'View Bag');
-          };
-        });
-      }
-    }
+    attachNotifInteractiveListeners();
   }
+
+  function attachNotifInteractiveListeners() {
+    $$('.notif-item.unread').forEach(item => {
+      item.addEventListener('click', async (e) => {
+        if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.notif-promo-copy-chip')) return;
+        const id = item.dataset.id;
+        if (id) {
+          try {
+            await fetchAuth(`/api/notifications/${id}/read`, { method: 'PUT' });
+            const hit = customerNotifications.find(n => String(n.id) === String(id));
+            if (hit) hit.is_read = true;
+            renderCustomerNotificationsUI();
+          } catch {}
+        }
+      });
+    });
+
+    $$('.notif-copy-trk-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const trk = btn.dataset.trk;
+        if (trk) {
+          navigator.clipboard?.writeText(trk);
+          toast(`Courier tracking #${trk} copied to clipboard!`);
+        }
+      };
+    });
+
+    $$('.notif-copy-code-chip').forEach(chip => {
+      chip.onclick = (e) => {
+        e.stopPropagation();
+        const code = chip.dataset.code || 'HERITAGE10';
+        navigator.clipboard?.writeText(code);
+        toast(`VIP Privilege Code ${code} copied to clipboard! Applied at checkout.`);
+      };
+    });
+
+    $$('.notif-add-bag-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const pid = Number(btn.dataset.pid);
+        if (pid) {
+          addToCart(pid, 'M', 1);
+          toast('Replenished creation added to your shopping bag!', 'cart.html', 'View Bag');
+        }
+      };
+    });
+  }
+
+  function updateNotificationBellUI() {
+    fetchCustomerNotifications();
+  }
+
   window.sendCustomerWishlistNotification = sendCustomerWishlistNotification;
   window.updateNotificationBellUI = updateNotificationBellUI;
+  window.fetchCustomerNotifications = fetchCustomerNotifications;
 
   /* ---------- Cart and Wishlist Operations ---------- */
   function addToCart(id, size = 'M', qty = 1, color = null) {
@@ -2327,6 +2546,28 @@
               <button class="btn ghost sm" id="wish" aria-pressed="${on()}">${on() ? 'Saved to Wishlist' : 'Save to Wishlist'}</button>
             </div>
 
+            <!-- Back in Stock & Artisanal Tailoring Alert (Smart Notification) -->
+            ${(p.stock || 0) <= 3 ? `
+              <div class="pdp-restock-box">
+                <div class="pdp-restock-header">
+                  <div class="pdp-restock-title">
+                    <span>🔔</span> Restock &amp; Artisanal Tailoring Alert
+                  </div>
+                  <span class="pdp-restock-badge">${(p.stock || 0) <= 0 ? 'Currently Sold Out' : `Only ${p.stock} units in atelier`}</span>
+                </div>
+                <p class="pdp-restock-desc">
+                  Want to secure this handcrafted piece in your size? Subscribe for an instant Smart Notification the moment a fresh artisanal wave is cut &amp; finished in the atelier.
+                </p>
+                <div class="pdp-restock-form" id="pdp-restock-form">
+                  <input type="email" class="pdp-restock-input" id="pdp-restock-email" placeholder="Enter patron email address" value="${esc(db.customerUser()?.email || '')}">
+                  <button type="button" class="pdp-restock-submit-btn" id="pdp-restock-btn">Notify Me When In Stock</button>
+                </div>
+                <div class="pdp-restock-success" id="pdp-restock-success" style="display:none">
+                  <span>✓</span> Priority alert confirmed! You will receive an instant smart notification when restocked.
+                </div>
+              </div>
+            ` : ''}
+
             <!-- Multi-Angle Studio Inspection Callout -->
             <div class="pdp-artisan-promise">
               <div class="promise-icon">⚜</div>
@@ -2660,6 +2901,45 @@
         e.target.textContent = v ? 'Saved to Wishlist' : 'Save to Wishlist';
         e.target.setAttribute('aria-pressed', v);
       };
+
+      // Smart Back-in-Stock Subscription Handler
+      const restockBtn = $('#pdp-restock-btn');
+      if (restockBtn) {
+        restockBtn.onclick = async () => {
+          const emailInput = $('#pdp-restock-email');
+          const email = emailInput?.value?.trim() || db.customerUser()?.email;
+          if (!email || !email.includes('@')) {
+            toast('Please enter a valid email address to receive restock alerts.');
+            emailInput?.focus();
+            return;
+          }
+          restockBtn.disabled = true;
+          restockBtn.textContent = 'Subscribing...';
+          try {
+            const res = await fetchAuth('/api/notifications/back-in-stock-subscribe', {
+              method: 'POST',
+              body: { productId: p.id, email }
+            });
+            const data = await res.json();
+            if (res.ok) {
+              const formEl = $('#pdp-restock-form');
+              const succEl = $('#pdp-restock-success');
+              if (formEl) formEl.style.display = 'none';
+              if (succEl) succEl.style.display = 'flex';
+              toast(`Priority restock alert confirmed for ${p.name}!`);
+              if (typeof fetchCustomerNotifications === 'function') fetchCustomerNotifications();
+            } else {
+              toast(data.error || 'Failed to subscribe for restock alerts.');
+              restockBtn.disabled = false;
+              restockBtn.textContent = 'Notify Me When In Stock';
+            }
+          } catch {
+            toast('Network error subscribing for restock alerts.');
+            restockBtn.disabled = false;
+            restockBtn.textContent = 'Notify Me When In Stock';
+          }
+        };
+      }
     },
 
     /* ---------- Module 4: Wishlist ---------- */
@@ -3029,6 +3309,12 @@
           const orderId = orderInfo.id || data.id;
           const trackingNumber = orderInfo.trackingNumber || data.trackingNumber || 'TRK-SS-PENDING';
           const orderTotal = orderInfo.total || data.total || t.total;
+
+          // Trigger Smart Notifications update
+          if (typeof fetchCustomerNotifications === 'function') {
+            fetchCustomerNotifications();
+          }
+          toast(`Commission Order #${orderId} Confirmed! Check Smart Notifications for live updates.`, 'account.html?tab=orders', 'View Orders');
 
           checkoutEl.innerHTML = `
             <div class="wrap" style="max-width:620px;margin:4rem auto;text-align:center;background:#fff;padding:3.5rem;border-radius:var(--radius-lg);border:1px solid var(--line);box-shadow:var(--shadow-md)">

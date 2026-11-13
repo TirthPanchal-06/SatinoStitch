@@ -7725,16 +7725,16 @@ model-viewer.atelier-3d-viewer {
   position: absolute;
   top: calc(100% + 14px);
   right: 0;
-  width: 380px;
-  max-width: 90vw;
+  width: 450px;
+  max-width: 94vw;
   background: #FFF;
-  border: 1px solid rgba(198, 161, 91, 0.35);
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(198, 161, 91, 0.38);
+  border-radius: 14px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(63, 14, 35, 0.08);
   z-index: 1000;
   overflow: hidden;
   display: none;
-  animation: fadeInDown 0.25s ease both;
+  animation: fadeInDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .notif-dropdown.show {
@@ -7742,47 +7742,121 @@ model-viewer.atelier-3d-viewer {
 }
 
 .notif-dropdown-header {
-  padding: 0.9rem 1.2rem;
-  background: linear-gradient(135deg, #3F0E23 0%, #5B1835 100%);
+  padding: 1rem 1.25rem 0.75rem;
+  background: linear-gradient(135deg, #380C1E 0%, #5B1835 100%);
   color: #FFF9F0;
+  border-bottom: 1px solid rgba(198, 161, 91, 0.3);
+}
+
+.notif-header-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 0.75rem;
 }
 
 .notif-dropdown-header h4 {
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 600;
   margin: 0;
   color: #FFF9F0;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
+  font-family: var(--font-title);
+  letter-spacing: 0.02em;
 }
 
-.notif-dropdown-clear {
-  font-size: 0.74rem;
+.notif-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notif-action-link {
+  font-size: 0.73rem;
   color: var(--gold-light);
   background: none;
   border: none;
   cursor: pointer;
-  text-decoration: underline;
   padding: 0;
+  transition: color 0.15s;
+}
+
+.notif-action-link:hover {
+  color: #FFF;
+  text-decoration: underline;
+}
+
+.notif-action-sep {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Category Filter Tabs */
+.notif-tabs-strip {
+  display: flex;
+  gap: 0.28rem;
+  padding-bottom: 0.15rem;
+}
+
+.notif-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.26rem 0.55rem;
+  font-size: 0.71rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.notif-tab:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #FFF;
+}
+
+.notif-tab.active {
+  background: #C6A15B;
+  color: #380C1E;
+  font-weight: 700;
+  border-color: #C6A15B;
+}
+
+.notif-tab-badge {
+  font-size: 0.66rem;
+  padding: 0.05rem 0.32rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #FFF;
+}
+
+.notif-tab.active .notif-tab-badge {
+  background: #380C1E;
+  color: #FFF;
 }
 
 .notif-list {
-  max-height: 400px;
+  max-height: 420px;
   overflow-y: auto;
-  padding: 0.4rem 0;
+  padding: 0.25rem 0;
+  background: #FFF;
 }
 
 .notif-item {
-  padding: 0.85rem 1.1rem;
+  position: relative;
+  padding: 0.95rem 1.25rem;
   border-bottom: 1px solid #F3F4F6;
   display: flex;
-  gap: 0.8rem;
+  gap: 0.85rem;
   align-items: flex-start;
-  transition: background 0.2s;
+  transition: background 0.15s ease;
+  cursor: pointer;
 }
 
 .notif-item:hover {
@@ -7793,51 +7867,175 @@ model-viewer.atelier-3d-viewer {
   border-bottom: none;
 }
 
+.notif-item.unread {
+  background: #FDFCF9;
+  border-left: 3px solid #C6A15B;
+}
+
 .notif-item-img {
-  width: 48px;
-  height: 62px;
+  width: 50px;
+  height: 64px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 6px;
   flex-shrink: 0;
   border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+
+.notif-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.notif-pill.order {
+  background: #FDF2F8;
+  color: #9D174D;
+  border: 1px solid rgba(157, 23, 77, 0.22);
+}
+
+.notif-pill.shipping {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid rgba(6, 95, 70, 0.22);
+}
+
+.notif-pill.stock {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid rgba(146, 64, 14, 0.22);
+}
+
+.notif-pill.promo {
+  background: #F5F3FF;
+  color: #5B21B6;
+  border: 1px solid rgba(91, 33, 182, 0.22);
+}
+
+.notif-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #C6A15B;
+  box-shadow: 0 0 6px rgba(198, 161, 91, 0.7);
+  flex-shrink: 0;
 }
 
 .notif-item-title {
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: var(--wine);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.35;
+  font-family: var(--font-title);
 }
 
 .notif-item-text {
-  font-size: 0.78rem;
+  font-size: 0.79rem;
   color: #4B5563;
-  line-height: 1.4;
-  margin-bottom: 0.35rem;
+  line-height: 1.45;
+  margin-bottom: 0.45rem;
 }
 
-.notif-item-review {
+.notif-extra-box {
+  background: #FAF8F5;
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  margin-bottom: 0.45rem;
   font-size: 0.74rem;
   color: #555;
-  font-style: italic;
-  background: #F9F7F4;
-  padding: 0.3rem 0.5rem;
-  border-radius: 4px;
-  border-left: 2px solid var(--gold);
-  line-height: 1.35;
-  margin-bottom: 0.4rem;
+  border-left: 2px solid #C6A15B;
+  line-height: 1.4;
 }
 
-.notif-item-footer {
+.notif-actions-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 0.3rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
 }
 
-.notif-item-time {
+.notif-time {
   font-size: 0.7rem;
   color: #9CA3AF;
+}
+
+.notif-action-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.notif-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.73rem;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid #C6A15B;
+  background: #FFF;
+  color: #380C1E;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.notif-cta-btn:hover {
+  background: #C6A15B;
+  color: #FFF;
+}
+
+.notif-cta-btn.solid {
+  background: #5B1835;
+  color: #FFF;
+  border-color: #5B1835;
+}
+
+.notif-cta-btn.solid:hover {
+  background: #380C1E;
+}
+
+.notif-promo-copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.55rem;
+  background: #F5F3FF;
+  border: 1px dashed #7C3AED;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #6D28D9;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.notif-promo-copy-chip:hover {
+  background: #EDE9FE;
+  transform: translateY(-1px);
 }
 
 .notif-empty {
@@ -7845,6 +8043,101 @@ model-viewer.atelier-3d-viewer {
   text-align: center;
   color: #9CA3AF;
   font-size: 0.85rem;
+}
+
+/* PDP Back-In-Stock Subscription Card */
+.pdp-restock-box {
+  margin: 1.25rem 0;
+  background: linear-gradient(135deg, #FAF7F2 0%, #FFFDF9 100%);
+  border: 1px solid rgba(198, 161, 91, 0.45);
+  border-radius: 10px;
+  padding: 1.1rem 1.35rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.pdp-restock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.pdp-restock-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #5B1835;
+  font-family: var(--font-title);
+}
+
+.pdp-restock-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid rgba(146, 64, 14, 0.25);
+}
+
+.pdp-restock-desc {
+  font-size: 0.82rem;
+  color: #4B5563;
+  line-height: 1.45;
+  margin: 0 0 0.85rem;
+}
+
+.pdp-restock-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pdp-restock-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.82rem;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  outline: none;
+  background: #FFF;
+}
+
+.pdp-restock-input:focus {
+  border-color: #C6A15B;
+  box-shadow: 0 0 0 2px rgba(198, 161, 91, 0.2);
+}
+
+.pdp-restock-submit-btn {
+  padding: 0.55rem 1.1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: #5B1835;
+  color: #FFF;
+  border: 1px solid #5B1835;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pdp-restock-submit-btn:hover {
+  background: #380C1E;
+}
+
+.pdp-restock-success {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: #065F46;
+  background: #ECFDF5;
+  padding: 0.55rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid rgba(6, 95, 70, 0.2);
 }
 
 /* Wishlist Concierge Recommendation Card in Quick View */

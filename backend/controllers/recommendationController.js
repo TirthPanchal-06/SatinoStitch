@@ -102,3 +102,4 @@ module.exports = {
   getPreferences,
   updatePreferences
 };
+

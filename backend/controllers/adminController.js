@@ -4,6 +4,7 @@ const productModel = require('../models/productModel');
 const userModel = require('../models/userModel');
 const orderModel = require('../models/orderModel');
 const adminUpgradeModel = require('../models/adminUpgradeModel');
+const customerNotificationModel = require('../models/customerNotificationModel');
 const { testConnection, query } = require('../config/db');
 
 async function getAnalytics(req, res) {
@@ -53,6 +54,11 @@ async function updateProductStock(req, res) {
       description: `Stock adjusted for "${updated.name}" to ${updated.stock} units by Administrator ${req.user.name}`,
       metadata: { productId: id, newStock: updated.stock }
     }).catch(() => { });
+
+    // Trigger Smart Back-in-Stock Notifications if replenished
+    if (Number(stock) > 0) {
+      customerNotificationModel.triggerBackInStockNotifications(id, stock).catch(() => { });
+    }
 
     res.json({ message: 'Stock updated successfully.', product: updated });
   } catch (err) {
@@ -118,6 +124,21 @@ async function updateOrderStatus(req, res) {
       description: `Order #${id} status changed to "${status}" by Administrator ${req.user.name}`,
       metadata: { orderId: id, status, trackingNumber }
     }).catch(() => { });
+
+    // Trigger Smart Shipping Update Notification for Customer
+    if (updated.user_id && ['Dispatched', 'In Transit', 'Out for Delivery', 'Delivered', 'Processing'].includes(status)) {
+      customerNotificationModel.createNotification({
+        userId: updated.user_id,
+        type: 'shipping_update',
+        title: `White-Glove Dispatch: Order #${updated.id} is ${status}`,
+        message: `Your couture parcel status is now "${status}". Tracking: ${updated.tracking_number || 'SS-EXP-2026'}. Courier Partner: Bluedart Apex Express.`,
+        badge: status === 'Delivered' ? '✓ Delivered' : '🚚 Shipping Update',
+        icon: 'truck',
+        image: 'images/emblem.png',
+        link: `account.html?tab=orders&id=${updated.id}`,
+        metadata: { orderId: updated.id, status, trackingNumber: updated.tracking_number }
+      }).catch(() => { });
+    }
 
     res.json({ message: `Order #${id} updated to ${status}.`, order: updated });
   } catch (err) {

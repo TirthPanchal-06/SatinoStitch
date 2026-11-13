@@ -12,3 +12,4 @@ router.get('/preferences', optionalAuth, recommendationController.getPreferences
 router.put('/preferences', authenticateCustomerToken, recommendationController.updatePreferences);
 
 module.exports = router;
+

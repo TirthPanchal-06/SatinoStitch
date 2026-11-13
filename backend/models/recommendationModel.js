@@ -495,3 +495,4 @@ module.exports = {
   generateOutfitRecommendations,
   getProductPairings
 };
+
