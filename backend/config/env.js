@@ -11,6 +11,7 @@ module.exports = {
   JWT_SECRET: process.env.JWT_SECRET || 'satinostitch_luxury_atelier_secret_2026',
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || 'rzp_test_51ABCD1234EFGH',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || 'satinostitch_rzp_secret_atelier_2026',
+  ADMIN_SECURITY_KEY: process.env.ADMIN_SECURITY_KEY || 'SATINO-SEC-2026-KEY',
   UPI_VPA: process.env.UPI_VPA || 'satinostitch@upi',
   MERCHANT_NAME: 'SATINOSTITCH'
 };

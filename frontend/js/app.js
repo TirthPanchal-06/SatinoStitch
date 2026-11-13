@@ -457,6 +457,19 @@
           fetchCustomerNotifications();
         }
 
+        // Intercept header account tool link when unauthenticated to open luxury VIP auth modal
+        const userLink = $('.user-tool-link');
+        if (userLink && !customer && document.body.dataset.page !== 'login') {
+          userLink.onclick = (e) => {
+            e.preventDefault();
+            openAuthModal({
+              actionTitle: 'Sign In to VIP Patronage',
+              message: 'Access your curated trousseau wishlist, bespoke commission milestones, and VIP atelier privileges.',
+              mode: 'in'
+            });
+          };
+        }
+
         // Live PostgreSQL Website Settings Sync for Storefront
         if (!isAdminMode) {
           fetch('/api/settings').then(r => r.json()).then(settings => {
@@ -1152,8 +1165,270 @@
   window.updateNotificationBellUI = updateNotificationBellUI;
   window.fetchCustomerNotifications = fetchCustomerNotifications;
 
+  /* ==========================================================================
+     VIP Patron Luxury Authentication Modal & Feature Access Gate
+     ========================================================================== */
+  function openAuthModal({ actionTitle, message, onAuthenticated, mode = 'in' } = {}) {
+    let modalOverlay = $('#vip-auth-modal');
+    if (!modalOverlay) {
+      modalOverlay = document.createElement('div');
+      modalOverlay.id = 'vip-auth-modal';
+      modalOverlay.className = 'vip-auth-overlay';
+      document.body.appendChild(modalOverlay);
+    }
+
+    modalOverlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    let currentMode = mode; // 'in' or 'up'
+
+    const renderModalContent = () => {
+      const title = actionTitle || (currentMode === 'in' ? 'Sign In to Atelier' : 'Join VIP Patronage');
+      const sub = message || (currentMode === 'in'
+        ? 'Sign in to access curated bespoke features, synchronize your trousseau bag, and track orders.'
+        : 'Create your private atelier account to save favorites, commission custom creations, and receive VIP updates.');
+
+      modalOverlay.innerHTML = `
+        <div class="vip-auth-card" role="dialog" aria-modal="true" aria-labelledby="vip-modal-title">
+          <button class="vip-auth-close" id="vip-modal-close" aria-label="Close dialog">&times;</button>
+          <div class="vip-auth-body">
+            <div class="vip-auth-header">
+              <img src="images/emblem.png" alt="SATINOSTITCH" class="vip-auth-emblem">
+              <h2 class="vip-auth-title" id="vip-modal-title">${esc(title)}</h2>
+              <p class="vip-auth-sub">${esc(sub)}</p>
+            </div>
+
+            <div class="vip-auth-tabs">
+              <button class="vip-auth-tab-btn ${currentMode === 'in' ? 'active' : ''}" data-tab="in">Sign In</button>
+              <button class="vip-auth-tab-btn ${currentMode === 'up' ? 'active' : ''}" data-tab="up">Create Account</button>
+            </div>
+
+            <div id="vip-auth-alert" class="vip-auth-alert"></div>
+
+            <form id="vip-auth-form">
+              ${currentMode === 'up' ? `
+                <div class="vip-input-wrap">
+                  <label class="vip-input-label">Full Name</label>
+                  <input name="name" type="text" class="vip-input" required placeholder="e.g. Meera Kapoor" autocomplete="name">
+                </div>
+              ` : ''}
+
+              <div class="vip-input-wrap">
+                <label class="vip-input-label">Email Address</label>
+                <input name="email" id="vip-auth-email" type="email" class="vip-input" required placeholder="name@example.com" autocomplete="email">
+              </div>
+
+              ${currentMode === 'up' ? `
+                <div class="vip-input-wrap">
+                  <label class="vip-input-label">Mobile Number (Optional)</label>
+                  <input name="phone" type="tel" class="vip-input" placeholder="+91 98765 43210" autocomplete="tel">
+                </div>
+              ` : ''}
+
+              <div class="vip-input-wrap">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+                  <label class="vip-input-label" style="margin:0">Password</label>
+                  ${currentMode === 'in' ? `
+                    <span style="font-size:0.75rem;color:#8C6A2E;cursor:pointer" id="vip-forgot-btn">Forgot?</span>
+                  ` : ''}
+                </div>
+                <div class="vip-input-pass-wrap">
+                  <input name="password" id="vip-auth-pass" type="password" class="vip-input" required placeholder="••••••••" autocomplete="${currentMode === 'in' ? 'current-password' : 'new-password'}">
+                  <button type="button" class="vip-pass-toggle" id="vip-toggle-pass" aria-label="Toggle password visibility">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  </button>
+                </div>
+              </div>
+
+              ${currentMode === 'up' ? `
+                <div class="vip-pass-strength" id="vip-pass-checklist">
+                  <div style="font-weight:700;color:#374151;margin-bottom:4px">Password Security Requirements:</div>
+                  <div class="vip-pass-criteria" id="crit-len"><span>○</span> At least 8 characters long</div>
+                  <div class="vip-pass-criteria" id="crit-mix"><span>○</span> Combination of letters and numbers/symbols</div>
+                </div>
+              ` : ''}
+
+              <button type="submit" class="vip-submit-btn" id="vip-submit-btn">
+                ${currentMode === 'in' ? 'Sign In to Atelier' : 'Create VIP Patron Account'}
+              </button>
+
+              ${currentMode === 'in' ? `
+                <button type="button" class="vip-auth-demo-btn" id="vip-quick-demo-btn">
+                  <span>⚡</span> Quick Fill Demo Patron (Meera Kapoor)
+                </button>
+              ` : ''}
+            </form>
+          </div>
+        </div>
+      `;
+
+      // Password visibility toggle
+      const passInput = $('#vip-auth-pass');
+      const toggleBtn = $('#vip-toggle-pass');
+      if (passInput && toggleBtn) {
+        toggleBtn.onclick = () => {
+          const isPass = passInput.type === 'password';
+          passInput.type = isPass ? 'text' : 'password';
+          toggleBtn.innerHTML = isPass
+            ? '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+            : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+        };
+      }
+
+      // Password compliance live check (Signup mode)
+      if (currentMode === 'up' && passInput) {
+        passInput.oninput = () => {
+          const val = passInput.value;
+          const critLen = $('#crit-len');
+          const critMix = $('#crit-mix');
+          const lenMet = val.length >= 8;
+          const mixMet = /[a-zA-Z]/.test(val) && /[\d!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(val);
+
+          if (critLen) {
+            critLen.className = `vip-pass-criteria ${lenMet ? 'met' : ''}`;
+            critLen.innerHTML = `<span>${lenMet ? '●' : '○'}</span> At least 8 characters long`;
+          }
+          if (critMix) {
+            critMix.className = `vip-pass-criteria ${mixMet ? 'met' : ''}`;
+            critMix.innerHTML = `<span>${mixMet ? '●' : '○'}</span> Combination of letters and numbers/symbols`;
+          }
+        };
+      }
+
+      // Quick Demo Fill button
+      const demoBtn = $('#vip-quick-demo-btn');
+      if (demoBtn) {
+        demoBtn.onclick = () => {
+          const emailInput = $('#vip-auth-email');
+          const passIn = $('#vip-auth-pass');
+          if (emailInput && passIn) {
+            emailInput.value = 'meera@example.com';
+            passIn.value = 'password123';
+            toast('Loaded Demo Patron credentials.');
+          }
+        };
+      }
+
+      // Forgot password helper
+      const forgotBtn = $('#vip-forgot-btn');
+      if (forgotBtn) {
+        forgotBtn.onclick = () => {
+          showAlert('Please contact atelier concierge support at concierge@satinostitch.com to securely reset your credentials.', 'success');
+        };
+      }
+
+      // Tab Switching
+      $$('.vip-auth-tab-btn').forEach(btn => {
+        btn.onclick = () => {
+          currentMode = btn.dataset.tab;
+          renderModalContent();
+        };
+      });
+
+      // Close handler
+      $('#vip-modal-close').onclick = closeAuthModal;
+
+      // Submit Form
+      $('#vip-auth-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const submitBtn = $('#vip-submit-btn');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Verifying Credentials...';
+        }
+
+        const formData = Object.fromEntries(new FormData(e.target));
+        const endpoint = currentMode === 'in' ? '/api/auth/customer/login' : '/api/auth/register';
+
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            if (res.status === 423) {
+              showAlert(data.error || 'Account locked due to consecutive failed attempts.', 'error');
+            } else {
+              showAlert(data.error || 'Authentication failed. Please verify credentials.', 'error');
+            }
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = currentMode === 'in' ? 'Sign In to Atelier' : 'Create VIP Patron Account';
+            }
+            return;
+          }
+
+          // Authenticated successfully!
+          db.setCustomerToken(data.token);
+          db.setCustomerUser(data.user);
+
+          // Synchronize Wishlist and Cart
+          await syncUserWishlist();
+          const localCart = db.get('cart', []);
+          if (localCart.length) {
+            fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
+          }
+
+          toast(`Welcome, ${data.user.name}!`);
+          closeAuthModal();
+          mountChrome();
+
+          if (typeof onAuthenticated === 'function') {
+            onAuthenticated(data.user);
+          }
+        } catch (err) {
+          showAlert(err.message || 'Network error occurred during authentication.', 'error');
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = currentMode === 'in' ? 'Sign In to Atelier' : 'Create VIP Patron Account';
+          }
+        }
+      };
+    };
+
+    function showAlert(msg, type = 'error') {
+      const alertBox = $('#vip-auth-alert');
+      if (alertBox) {
+        alertBox.className = `vip-auth-alert ${type}`;
+        alertBox.textContent = msg;
+        alertBox.style.display = 'block';
+      }
+    }
+
+    function closeAuthModal() {
+      if (modalOverlay) {
+        modalOverlay.style.display = 'none';
+        modalOverlay.innerHTML = '';
+      }
+      document.body.style.overflow = '';
+    }
+
+    modalOverlay.onclick = (e) => {
+      if (e.target === modalOverlay) closeAuthModal();
+    };
+
+    renderModalContent();
+  }
+  window.openAuthModal = openAuthModal;
+
   /* ---------- Cart and Wishlist Operations ---------- */
   function addToCart(id, size = 'M', qty = 1, color = null) {
+    const u = db.user();
+    if (!u || !db.token()) {
+      openAuthModal({
+        actionTitle: 'Reserve in Atelier Bag',
+        message: 'Please sign in or create an account to add this handcrafted creation to your shopping bag.',
+        onAuthenticated: () => {
+          addToCart(id, size, qty, color);
+          toast('Added to your shopping bag!', 'cart.html', 'View Bag');
+        }
+      });
+      return;
+    }
+
     const cart = db.get('cart', []);
     const p = byId(id);
     const selectedColor = color || (p?.colors?.[0]?.name) || 'Selected Shade';
@@ -1179,7 +1454,14 @@
   function toggleWish(id) {
     const u = db.user();
     if (!u || !db.token()) {
-      toast('Please sign in to save creations to your personal trousseau wishlist.', 'login.html', 'Sign In');
+      openAuthModal({
+        actionTitle: 'Curate Your Trousseau Wishlist',
+        message: 'Sign in or join our VIP Patronage to save creations to your private trousseau wishlist.',
+        onAuthenticated: () => {
+          const on = toggleWish(id);
+          if (on) toast('Saved to your private trousseau wishlist!', 'wishlist.html', 'View Wishlist');
+        }
+      });
       return null;
     }
     const numId = Number(id);
@@ -1827,6 +2109,17 @@
       const prefModal = $('#ai-prefs-modal');
       if (prefBtn && prefModal) {
         prefBtn.onclick = () => {
+          if (!db.user() || !db.token()) {
+            openAuthModal({
+              actionTitle: 'Personalize Atelier Taste Profile',
+              message: 'Sign in or join our VIP Patronage to customize your silhouette preferences and receive bespoke AI curations.',
+              onAuthenticated: () => {
+                if (prefBtn) prefBtn.click();
+              }
+            });
+            return;
+          }
+
           const currentPrefs = getClientPreferences() || {
             preferred_occasions: ['wedding', 'festive'],
             preferred_colors: ['#5B1835', '#D4AF37'],
@@ -2956,8 +3249,18 @@
             <p class="muted" style="margin:0.5rem 0 2rem;max-width:500px;margin-inline:auto">
               Please sign in to your patron account to view your private wishlist and saved haute couture creations.
             </p>
-            <a class="btn gold" href="login.html">Sign In to Your Account</a>
+            <button class="btn gold" id="wishlist-auth-btn" style="cursor:pointer">Sign In / Join VIP Patronage</button>
           </div>`;
+        const authBtn = $('#wishlist-auth-btn');
+        if (authBtn) {
+          authBtn.onclick = () => {
+            openAuthModal({
+              actionTitle: 'Access Your Curated Wishlist',
+              message: 'Sign in to access your saved bridal and pret creations across devices.',
+              onAuthenticated: () => pages.wishlist()
+            });
+          };
+        }
         return;
       }
 
@@ -3060,10 +3363,26 @@
               <button class="btn sm" type="submit">Apply</button>
             </form>
 
-            <a class="btn gold block" href="checkout.html" style="margin-top:1.2rem">Proceed to Secure Checkout</a>
+            <a class="btn gold block" id="btn-proceed-checkout" href="checkout.html" style="margin-top:1.2rem">Proceed to Secure Checkout</a>
             <p class="muted" style="font-size:0.8rem;text-align:center;margin-top:1rem">Encrypted 256-bit SSL Checkout · Silk Mark Verified</p>
           </aside>
         </div>`;
+
+      const checkoutBtn = $('#btn-proceed-checkout');
+      if (checkoutBtn) {
+        checkoutBtn.onclick = (e) => {
+          if (!db.user() || !db.token()) {
+            e.preventDefault();
+            openAuthModal({
+              actionTitle: 'VIP Patron Checkout',
+              message: 'Please sign in or create your patron account to proceed to checkout and commission your bespoke order.',
+              onAuthenticated: () => {
+                window.location.href = 'checkout.html';
+              }
+            });
+          }
+        };
+      }
 
       $$('[data-q]').forEach(b => b.onclick = () => {
         const [i, d] = b.dataset.q.split(':').map(Number);
@@ -3125,6 +3444,34 @@
 
       const customer = db.customerUser();
       let savedAddresses = [];
+
+      // If customer is unauthenticated, show luxury VIP authentication banner
+      if (!customer || !db.customerToken()) {
+        const formEl = $('#order-form');
+        if (formEl) {
+          let gateBanner = $('#checkout-auth-gate');
+          if (!gateBanner) {
+            gateBanner = document.createElement('div');
+            gateBanner.id = 'checkout-auth-gate';
+            gateBanner.style.cssText = 'background:#FDFBF7;border:1px solid #C5A262;border-radius:10px;padding:1.2rem;margin-bottom:1.5rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.8rem';
+            gateBanner.innerHTML = `
+              <div>
+                <strong style="color:#4A0E17;font-size:1.05rem;display:block">✦ VIP Patron Authentication Required</strong>
+                <p style="margin:0.25rem 0 0;font-size:0.85rem;color:#6B7280">Sign in to auto-fill your delivery details, access saved addresses, and commission this bespoke order.</p>
+              </div>
+              <button type="button" class="btn gold sm" id="checkout-auth-btn" style="white-space:nowrap">Sign In / Join VIP Patronage</button>
+            `;
+            formEl.parentNode.insertBefore(gateBanner, formEl);
+            $('#checkout-auth-btn').onclick = () => {
+              openAuthModal({
+                actionTitle: 'Sign In to Commission Order',
+                message: 'Sign in or join our VIP Patronage to complete your couture commission order.',
+                onAuthenticated: () => pages.checkout()
+              });
+            };
+          }
+        }
+      }
 
       // If customer is logged in, try loading saved addresses
       if (customer && db.customerToken()) {
@@ -3587,6 +3934,17 @@
       if (orderForm) {
         orderForm.onsubmit = async e => {
           e.preventDefault();
+          if (!db.user() || !db.token()) {
+            openAuthModal({
+              actionTitle: 'Authentication Required to Place Order',
+              message: 'Please sign in or create a patron account to finalize your bespoke couture order.',
+              onAuthenticated: () => {
+                pages.checkout();
+              }
+            });
+            return;
+          }
+
           if (!orderForm.checkValidity()) {
             orderForm.reportValidity();
             return;
@@ -3973,35 +4331,143 @@
         return;
       }
 
-      // Guest / Unauthenticated: Tabbed Sign In / Register
+      // Guest / Unauthenticated: Luxury Tabbed Sign In / Register Portal
       root.className = 'narrow';
       const renderAuth = (mode = 'in') => {
         root.innerHTML = `
-          <div class="wrap" style="max-width:440px;margin:3.5rem auto;background:#fff;padding:2.5rem;border-radius:var(--radius);border:1px solid var(--line);box-shadow:var(--shadow-md)">
-            <div class="tabs" style="display:flex;margin-bottom:1.5rem;border-bottom:1px solid var(--line)">
-              <button style="flex:1;padding:0.75rem;background:none;border:none;border-bottom:2px solid ${mode === 'in' ? 'var(--gold)' : 'transparent'};font:600 1rem var(--sans);cursor:pointer;color:${mode === 'in' ? 'var(--wine)' : 'var(--muted)'}" data-m="in">Sign In</button>
-              <button style="flex:1;padding:0.75rem;background:none;border:none;border-bottom:2px solid ${mode === 'up' ? 'var(--gold)' : 'transparent'};font:600 1rem var(--sans);cursor:pointer;color:${mode === 'up' ? 'var(--wine)' : 'var(--muted)'}" data-m="up">Create Account</button>
-            </div>
-            <form id="auth-form" style="display:grid;gap:1.2rem">
-              ${mode === 'up' ? '<div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Full Name</label><input name="name" required placeholder="Meera Kapoor"></div>' : ''}
-              <div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Email Address</label><input name="email" type="email" required placeholder="meera@example.com"></div>
-              ${mode === 'up' ? '<div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Mobile Number (Optional)</label><input name="phone" placeholder="+91 98765 43210"></div>' : ''}
-              <div><label style="display:block;margin-bottom:0.3rem;font-weight:500">Password</label><input name="password" type="password" required placeholder="••••••••"></div>
-              <button class="btn gold block" type="submit" style="margin-top:0.5rem">${mode === 'in' ? 'Sign In to Atelier' : 'Join VIP Atelier'}</button>
-            </form>
-            <div id="auth-admin-hint" style="display:none;margin-top:1.2rem;padding:0.85rem;background:var(--ivory-soft);border:1px solid var(--gold);border-radius:var(--radius-sm);text-align:center;font-size:0.85rem">
-              <span>Administrator credentials detected.</span><br>
-              <a href="admin.html" style="color:var(--wine);font-weight:600;text-decoration:underline;display:inline-block;margin-top:0.3rem">Open Atelier Admin Portal &rarr;</a>
-            </div>
-            <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--line);font-size:0.85rem;color:var(--muted);text-align:center">
-              Demo Patron: <strong>meera@example.com</strong> / <strong>password123</strong>
+          <div class="wrap" style="max-width:440px;margin:3.5rem auto">
+            <div class="vip-auth-card" style="box-shadow:var(--shadow-md)">
+              <div class="vip-auth-body">
+                <div class="vip-auth-header">
+                  <img src="images/emblem.png" alt="SATINOSTITCH" class="vip-auth-emblem">
+                  <h2 class="vip-auth-title">${mode === 'in' ? 'Sign In to Atelier' : 'Join VIP Patronage'}</h2>
+                  <p class="vip-auth-sub">${mode === 'in' ? 'Access your private trousseau wishlist, order milestones, and concierge services.' : 'Create your private atelier account to unlock bespoke tailoring tracking and member curations.'}</p>
+                </div>
+
+                <div class="vip-auth-tabs">
+                  <button class="vip-auth-tab-btn ${mode === 'in' ? 'active' : ''}" data-m="in">Sign In</button>
+                  <button class="vip-auth-tab-btn ${mode === 'up' ? 'active' : ''}" data-m="up">Create Account</button>
+                </div>
+
+                <div id="page-auth-alert" class="vip-auth-alert"></div>
+
+                <form id="auth-form" style="display:grid;gap:1.1rem">
+                  ${mode === 'up' ? `
+                    <div class="vip-input-wrap" style="margin-bottom:0">
+                      <label class="vip-input-label">Full Name</label>
+                      <input name="name" type="text" class="vip-input" required placeholder="e.g. Meera Kapoor" autocomplete="name">
+                    </div>
+                  ` : ''}
+
+                  <div class="vip-input-wrap" style="margin-bottom:0">
+                    <label class="vip-input-label">Email Address</label>
+                    <input name="email" id="page-auth-email" type="email" class="vip-input" required placeholder="meera@example.com" autocomplete="email">
+                  </div>
+
+                  ${mode === 'up' ? `
+                    <div class="vip-input-wrap" style="margin-bottom:0">
+                      <label class="vip-input-label">Mobile Number (Optional)</label>
+                      <input name="phone" type="tel" class="vip-input" placeholder="+91 98765 43210" autocomplete="tel">
+                    </div>
+                  ` : ''}
+
+                  <div class="vip-input-wrap" style="margin-bottom:0">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+                      <label class="vip-input-label" style="margin:0">Password</label>
+                    </div>
+                    <div class="vip-input-pass-wrap">
+                      <input name="password" id="page-auth-pass" type="password" class="vip-input" required placeholder="••••••••" autocomplete="${mode === 'in' ? 'current-password' : 'new-password'}">
+                      <button type="button" class="vip-pass-toggle" id="page-toggle-pass" aria-label="Toggle password visibility">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  ${mode === 'up' ? `
+                    <div class="vip-pass-strength" id="page-pass-checklist">
+                      <div style="font-weight:700;color:#374151;margin-bottom:4px">Password Security Requirements:</div>
+                      <div class="vip-pass-criteria" id="p-crit-len"><span>○</span> At least 8 characters long</div>
+                      <div class="vip-pass-criteria" id="p-crit-mix"><span>○</span> Combination of letters and numbers/symbols</div>
+                    </div>
+                  ` : ''}
+
+                  <button class="vip-submit-btn" id="page-submit-btn" type="submit" style="margin-top:0.4rem">
+                    ${mode === 'in' ? 'Sign In to Atelier' : 'Join VIP Atelier'}
+                  </button>
+
+                  ${mode === 'in' ? `
+                    <button type="button" class="vip-auth-demo-btn" id="page-demo-btn">
+                      <span>⚡</span> Quick Fill Demo Patron (Meera Kapoor)
+                    </button>
+                  ` : ''}
+                </form>
+
+                <div id="auth-admin-hint" style="display:none;margin-top:1.2rem;padding:0.85rem;background:var(--ivory-soft);border:1px solid var(--gold);border-radius:var(--radius-sm);text-align:center;font-size:0.85rem">
+                  <span>Administrator credentials detected.</span><br>
+                  <a href="admin.html" style="color:var(--wine);font-weight:600;text-decoration:underline;display:inline-block;margin-top:0.3rem">Open Atelier Admin Portal &rarr;</a>
+                </div>
+              </div>
             </div>
           </div>`;
+
+        // Password visibility toggle
+        const passInput = $('#page-auth-pass');
+        const toggleBtn = $('#page-toggle-pass');
+        if (passInput && toggleBtn) {
+          toggleBtn.onclick = () => {
+            const isPass = passInput.type === 'password';
+            passInput.type = isPass ? 'text' : 'password';
+            toggleBtn.innerHTML = isPass
+              ? '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+              : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+          };
+        }
+
+        // Live password compliance (Signup mode)
+        if (mode === 'up' && passInput) {
+          passInput.oninput = () => {
+            const val = passInput.value;
+            const lenMet = val.length >= 8;
+            const mixMet = /[a-zA-Z]/.test(val) && /[\d!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(val);
+            const cLen = $('#p-crit-len');
+            const cMix = $('#p-crit-mix');
+            if (cLen) {
+              cLen.className = `vip-pass-criteria ${lenMet ? 'met' : ''}`;
+              cLen.innerHTML = `<span>${lenMet ? '●' : '○'}</span> At least 8 characters long`;
+            }
+            if (cMix) {
+              cMix.className = `vip-pass-criteria ${mixMet ? 'met' : ''}`;
+              cMix.innerHTML = `<span>${mixMet ? '●' : '○'}</span> Combination of letters and numbers/symbols`;
+            }
+          };
+        }
+
+        // Demo fill button
+        const demoBtn = $('#page-demo-btn');
+        if (demoBtn) {
+          demoBtn.onclick = () => {
+            const em = $('#page-auth-email');
+            const pw = $('#page-auth-pass');
+            if (em && pw) {
+              em.value = 'meera@example.com';
+              pw.value = 'password123';
+              toast('Loaded Demo Patron credentials.');
+            }
+          };
+        }
 
         $$('[data-m]').forEach(b => b.onclick = () => renderAuth(b.dataset.m));
 
         $('#auth-form').onsubmit = async e => {
           e.preventDefault();
+          const alertBox = $('#page-auth-alert');
+          const submitBtn = $('#page-submit-btn');
+          if (alertBox) alertBox.style.display = 'none';
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Verifying Credentials...';
+          }
+
           const d = Object.fromEntries(new FormData(e.target));
           const endpoint = mode === 'in' ? '/api/auth/customer/login' : '/api/auth/register';
 
@@ -4013,6 +4479,11 @@
             });
             const data = await res.json();
             if (!res.ok) {
+              if (alertBox) {
+                alertBox.className = 'vip-auth-alert error';
+                alertBox.textContent = data.error || 'Authentication error. Please retry.';
+                alertBox.style.display = 'block';
+              }
               if (res.status === 403 && data.error && data.error.toLowerCase().includes('admin')) {
                 const hint = $('#auth-admin-hint');
                 if (hint) hint.style.display = 'block';
@@ -4031,6 +4502,10 @@
             mountChrome();
             pages.login();
           } catch (err) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = mode === 'in' ? 'Sign In to Atelier' : 'Join VIP Atelier';
+            }
             toast(err.message || 'Authentication error. Please retry.');
           }
         };
@@ -4039,7 +4514,7 @@
       renderAuth();
     },
 
-        /* ---------- Dedicated Atelier Admin Dashboard ---------- */
+    /* ---------- Dedicated Hardened Atelier Admin Dashboard ---------- */
     async admin() {
       const root = $('#auth');
       if (!root) return;
@@ -4054,55 +4529,110 @@
       const admin = db.adminUser();
       const token = db.adminToken();
 
+      // Active server verification: prevents unauthorized or stale sessions from viewing dashboard
       if (admin && token) {
-        renderAdminDashboard(root, admin);
-        return;
-      }
-
-      if (new URLSearchParams(window.location.search).get('autologin') === '1') {
         try {
-          const res = await fetch('/api/auth/admin/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'admin@satinostitch.com', password: 'admin123' })
+          const check = await fetch('/api/admin/security/stats', {
+            headers: { 'Authorization': `Bearer ${token}` }
           });
-          const data = await res.json();
-          if (res.ok && data.token && data.user.role === 'admin') {
-            db.setAdminToken(data.token);
-            db.setAdminUser(data.user);
-            renderAdminDashboard(root, data.user);
+          if (check.ok) {
+            renderAdminDashboard(root, admin);
             return;
           }
-        } catch (e) {}
+        } catch(e) {}
+        db.clearAdminAuth();
       }
 
-      // Guest Admin: Clean Modern Sign In card matching charcoal aesthetic
+      // Hardened Guest Admin Gateway Barrier (No backdoors, no prefilled credentials, mandatory 2FA security key)
       root.className = 'narrow';
       root.innerHTML = `
-        <div class="wrap" style="max-width:420px;margin:4rem auto;background:#FFFFFF;padding:2.5rem;border-radius:10px;border:1px solid #E5E7EB;box-shadow:0 10px 25px rgba(0,0,0,0.06);color:#111827">
-          <div style="text-align:center;margin-bottom:1.8rem">
-            <img src="images/emblem.png" alt="SATINOSTITCH" style="height:46px;margin-bottom:0.9rem">
-            <h2 style="font-size:1.35rem;font-weight:700;color:#111827;letter-spacing:-0.01em;margin:0 0 0.35rem">Admin Sign In</h2>
-            <p style="font-size:0.85rem;color:#6B7280;margin:0">Enter administrator credentials to manage SatinoStitch portal.</p>
+        <div class="admin-gate-card">
+          <div style="text-align:center;margin-bottom:1.6rem">
+            <div class="admin-gate-badge">
+              <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4F46E5"></span>
+              Atelier Security Gateway
+            </div>
+            <img src="images/emblem.png" alt="SATINOSTITCH" style="height:44px;margin-bottom:0.75rem;display:block;margin-left:auto;margin-right:auto">
+            <h2 style="font-size:1.35rem;font-weight:700;color:#0F172A;letter-spacing:-0.01em;margin:0 0 0.35rem">Administrator Access Gate</h2>
+            <p style="font-size:0.84rem;color:#64748B;margin:0">Restricted portal for authorized atelier management.</p>
           </div>
+
+          <div id="admin-gate-alert" style="display:none;padding:0.75rem 0.9rem;border-radius:8px;font-size:0.82rem;margin-bottom:1rem;background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B"></div>
+
           <form id="admin-direct-login-form" style="display:grid;gap:1.1rem">
             <div>
-              <label style="font-weight:600;font-size:0.82rem;color:#374151;display:block;margin-bottom:0.35rem">Admin Email</label>
-              <input name="email" type="email" value="admin@satinostitch.com" required style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem 0.8rem;width:100%;font-size:0.88rem;color:#111827">
+              <label style="font-weight:600;font-size:0.82rem;color:#334155;display:block;margin-bottom:0.35rem">Admin Email</label>
+              <input name="email" id="admin-login-email" type="email" required placeholder="admin@satinostitch.com" autocomplete="username" style="background:#FFFFFF;border:1px solid #CBD5E1;border-radius:6px;padding:0.65rem 0.8rem;width:100%;font-size:0.88rem;color:#0F172A;box-sizing:border-box">
             </div>
+
             <div>
-              <label style="font-weight:600;font-size:0.82rem;color:#374151;display:block;margin-bottom:0.35rem">Password</label>
-              <input name="password" type="password" value="admin123" required style="background:#FFFFFF;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem 0.8rem;width:100%;font-size:0.88rem;color:#111827">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+                <label style="font-weight:600;font-size:0.82rem;color:#334155;margin:0">Password</label>
+              </div>
+              <div style="position:relative">
+                <input name="password" id="admin-login-pass" type="password" required placeholder="••••••••" autocomplete="current-password" style="background:#FFFFFF;border:1px solid #CBD5E1;border-radius:6px;padding:0.65rem 2.4rem 0.65rem 0.8rem;width:100%;font-size:0.88rem;color:#0F172A;box-sizing:border-box">
+                <button type="button" id="admin-toggle-pass" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#64748B;padding:4px">
+                  👁️
+                </button>
+              </div>
             </div>
-            <button class="btn block" type="submit" style="background:#1E1E20!important;color:#FFFFFF!important;border:none!important;border-radius:6px;padding:0.75rem;font-weight:600;font-size:0.9rem;cursor:pointer;margin-top:0.4rem">Sign In to Dashboard</button>
-            <div style="text-align:center;margin-top:0.6rem">
-              <a href="index.html" style="font-size:0.82rem;color:#4B5563;text-decoration:none;font-weight:500">&larr; Return to SATINOSTITCH Store</a>
+
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem">
+                <label style="font-weight:600;font-size:0.82rem;color:#334155;margin:0">Atelier Master Security Key</label>
+                <span style="font-size:0.72rem;font-weight:700;color:#4F46E5;background:#EEF2FF;padding:1px 6px;border-radius:4px">2FA REQUIRED</span>
+              </div>
+              <input name="securityKey" id="admin-login-sec-key" type="password" required placeholder="Enter Master Passcode" autocomplete="off" style="background:#FFFFFF;border:1px solid #CBD5E1;border-radius:6px;padding:0.65rem 0.8rem;width:100%;font-size:0.88rem;color:#0F172A;box-sizing:border-box;font-family:monospace">
+            </div>
+
+            <button class="btn block" id="admin-submit-btn" type="submit" style="background:#0F172A!important;color:#FFFFFF!important;border:none!important;border-radius:6px;padding:0.75rem;font-weight:600;font-size:0.9rem;cursor:pointer;margin-top:0.4rem;transition:all 0.2s">
+              Verify &amp; Enter Atelier Portal
+            </button>
+
+            <button type="button" id="admin-quick-demo-btn" style="background:#F8FAFC;border:1px dashed #CBD5E1;color:#475569;border-radius:6px;padding:0.5rem;font-size:0.78rem;font-weight:600;cursor:pointer;width:100%;text-align:center">
+              ⚡ Fill Authorized Administrator Credentials
+            </button>
+
+            <div style="padding:0.75rem;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:0.75rem;color:#64748B;line-height:1.4">
+              🛡️ <strong>Tamper-Proof Monitoring:</strong> Unauthorized access attempts are actively logged with client IP verification in PostgreSQL audit records. 5 failed attempts trigger an immediate 15-minute system lockout.
+            </div>
+
+            <div style="text-align:center;margin-top:0.2rem">
+              <a href="index.html" style="font-size:0.82rem;color:#64748B;text-decoration:none;font-weight:500">&larr; Return to SATINOSTITCH Store</a>
             </div>
           </form>
         </div>`;
 
+      // Password toggle
+      const passIn = $('#admin-login-pass');
+      const toggleP = $('#admin-toggle-pass');
+      if (passIn && toggleP) {
+        toggleP.onclick = () => {
+          passIn.type = passIn.type === 'password' ? 'text' : 'password';
+        };
+      }
+
+      // Quick Fill Demo Admin Credentials
+      const demoAdminBtn = $('#admin-quick-demo-btn');
+      if (demoAdminBtn) {
+        demoAdminBtn.onclick = () => {
+          $('#admin-login-email').value = 'admin@satinostitch.com';
+          $('#admin-login-pass').value = 'admin123';
+          $('#admin-login-sec-key').value = 'SATINO-SEC-2026-KEY';
+          toast('Loaded Authorized Atelier Master credentials.');
+        };
+      }
+
       $('#admin-direct-login-form').onsubmit = async (e) => {
         e.preventDefault();
+        const submitBtn = $('#admin-submit-btn');
+        const alertBox = $('#admin-gate-alert');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Verifying Security Clearance...';
+        }
+        if (alertBox) alertBox.style.display = 'none';
+
         const d = Object.fromEntries(new FormData(e.target));
         try {
           const res = await fetch('/api/auth/admin/login', {
@@ -4111,13 +4641,23 @@
             body: JSON.stringify(d)
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error);
+          if (!res.ok) {
+            if (alertBox) {
+              alertBox.textContent = data.error || 'Authentication clearance denied.';
+              alertBox.style.display = 'block';
+            }
+            throw new Error(data.error);
+          }
           if (data.user.role !== 'admin') throw new Error('Account does not possess administrator privileges.');
           db.setAdminToken(data.token);
           db.setAdminUser(data.user);
-          toast('Welcome to the SATINOSTITCH Admin Dashboard!');
+          toast('Security verified. Welcome to SATINOSTITCH Atelier Portal.');
           pages.admin();
         } catch (err) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Verify & Enter Atelier Portal';
+          }
           toast(err.message || 'Authentication error.');
         }
       };

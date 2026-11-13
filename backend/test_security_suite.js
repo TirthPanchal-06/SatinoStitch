@@ -191,8 +191,8 @@ async function runSuite() {
     });
     customerToken = custLogin.data.token;
 
-    // Login admin (using correct admin credentials)
-    const adminLogin = await request({
+    // 5a. Admin login attempt without master security key -> 403 Forbidden
+    const unauthAdminKeyRes = await request({
       hostname: 'localhost',
       port: 3000,
       path: '/api/auth/admin/login',
@@ -201,6 +201,21 @@ async function runSuite() {
     }, {
       email: 'admin@satinostitch.com',
       password: 'admin123'
+    });
+    assert(unauthAdminKeyRes.statusCode === 403 && unauthAdminKeyRes.data.code === 'INVALID_SECURITY_KEY', 
+      'Admin Security Gate: Direct login rejected without Atelier Master Security Key (HTTP 403)');
+
+    // 5b. Login admin with valid credentials and Atelier Master Security Key
+    const adminLogin = await request({
+      hostname: 'localhost',
+      port: 3000,
+      path: '/api/auth/admin/login',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }, {
+      email: 'admin@satinostitch.com',
+      password: 'admin123',
+      securityKey: 'SATINO-SEC-2026-KEY'
     });
     adminToken = adminLogin.data.token;
 

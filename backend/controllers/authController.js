@@ -5,6 +5,7 @@ const adminUpgradeModel = require('../models/adminUpgradeModel');
 const { generateToken } = require('../middleware/auth');
 const { logSecurityEvent } = require('../services/securityAuditService');
 const { getClientIp } = require('../middleware/rateLimiter');
+const env = require('../config/env');
 
 /**
  * Validates password complexity:
@@ -351,6 +352,38 @@ async function adminLogin(req, res) {
 
       return res.status(403).json({
         error: 'Access denied. Account does not possess Atelier Administrator credentials.'
+      });
+    }
+
+    // 4. Atelier Master Security Key Verification (Second Factor)
+    const securityKey = (req.body && (req.body.securityKey || req.body.security_key || req.body.passcode || req.body.masterKey)) || '';
+    const expectedKey = env.ADMIN_SECURITY_KEY || 'SATINO-SEC-2026-KEY';
+
+    if (!securityKey || securityKey.trim() !== expectedKey.trim()) {
+      const lockStatus = await userModel.recordFailedLogin(email, clientIp);
+
+      logSecurityEvent({
+        eventType: 'ADMIN_SECURITY_KEY_FAILURE',
+        severity: 'CRITICAL',
+        userId: user.id,
+        userEmail: user.email,
+        ipAddress: clientIp,
+        path: '/api/auth/admin/login',
+        method: 'POST',
+        details: { reason: 'Invalid or missing Atelier Master Security Key', attempts: lockStatus.attempts }
+      }).catch(() => {});
+
+      if (lockStatus.isLocked) {
+        return res.status(423).json({
+          error: 'Maximum administrator authentication attempts exceeded. Account is locked for 15 minutes.',
+          locked: true,
+          code: 'ACCOUNT_LOCKED'
+        });
+      }
+
+      return res.status(403).json({
+        error: 'Security Verification Failed: Valid Atelier Master Security Key is required for administrative clearance.',
+        code: 'INVALID_SECURITY_KEY'
       });
     }
 

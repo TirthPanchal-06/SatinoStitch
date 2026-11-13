@@ -8962,3 +8962,313 @@ html {
     padding: 0 !important;
   }
 }
+
+/* ==========================================================================
+   VIP Customer Auth Modal & Hardened Admin Security Gate
+   ========================================================================== */
+.vip-auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 14, 18, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: vipModalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes vipModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.vip-auth-card {
+  background: #FFFFFF;
+  border: 1px solid rgba(197, 162, 98, 0.4);
+  border-radius: 16px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 25px 60px rgba(26, 14, 18, 0.35), 0 0 0 1px rgba(197, 162, 98, 0.15);
+  position: relative;
+  overflow: hidden;
+  animation: vipModalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes vipModalSlideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.vip-auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--gold-pale, #F5EADA), var(--gold, #C5A262), var(--wine, #4A0E17), var(--gold, #C5A262));
+}
+
+.vip-auth-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #F8F5F1;
+  border: 1px solid rgba(197, 162, 98, 0.3);
+  color: #4A0E17;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.vip-auth-close:hover {
+  background: #4A0E17;
+  color: #FFFFFF;
+  transform: rotate(90deg);
+}
+
+.vip-auth-body {
+  padding: 2.2rem 2rem 2rem;
+}
+
+.vip-auth-header {
+  text-align: center;
+  margin-bottom: 1.4rem;
+}
+
+.vip-auth-emblem {
+  height: 42px;
+  margin-bottom: 0.75rem;
+}
+
+.vip-auth-title {
+  font-family: var(--font-serif, 'Marcellus', serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--wine, #4A0E17);
+  margin: 0 0 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+.vip-auth-sub {
+  font-size: 0.84rem;
+  color: #6B7280;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.vip-auth-tabs {
+  display: flex;
+  border-bottom: 1px solid #E5E7EB;
+  margin-bottom: 1.35rem;
+}
+
+.vip-auth-tab-btn {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vip-auth-tab-btn.active {
+  color: var(--wine, #4A0E17);
+  border-bottom-color: var(--gold, #C5A262);
+}
+
+.vip-input-wrap {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.vip-input-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.35rem;
+}
+
+.vip-input {
+  width: 100%;
+  padding: 0.68rem 0.85rem;
+  font-size: 0.9rem;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #111827;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.vip-input:focus {
+  outline: none;
+  border-color: var(--gold, #C5A262);
+  box-shadow: 0 0 0 3px rgba(197, 162, 98, 0.18);
+}
+
+.vip-input-pass-wrap {
+  position: relative;
+}
+
+.vip-pass-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6B7280;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.vip-pass-toggle:hover {
+  color: var(--wine, #4A0E17);
+}
+
+.vip-auth-alert {
+  padding: 0.75rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  margin-bottom: 1rem;
+  display: none;
+}
+
+.vip-auth-alert.error {
+  display: block;
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  color: #991B1B;
+}
+
+.vip-auth-alert.success {
+  display: block;
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  color: #166534;
+}
+
+.vip-pass-strength {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 0.65rem 0.8rem;
+  margin-bottom: 1rem;
+  font-size: 0.76rem;
+}
+
+.vip-pass-criteria {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6B7280;
+  margin-top: 3px;
+}
+
+.vip-pass-criteria.met {
+  color: #15803D;
+  font-weight: 600;
+}
+
+.vip-submit-btn {
+  width: 100%;
+  background: #4A0E17 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 8px;
+  padding: 0.78rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(74, 14, 23, 0.25);
+}
+
+.vip-submit-btn:hover {
+  background: #360910 !important;
+  box-shadow: 0 6px 18px rgba(74, 14, 23, 0.35);
+  transform: translateY(-1px);
+}
+
+.vip-auth-demo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin-top: 0.75rem;
+  background: #FDFBF7;
+  border: 1px dashed rgba(197, 162, 98, 0.5);
+  color: #8C6A2E;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vip-auth-demo-btn:hover {
+  background: #F5EADA;
+  color: #5A4215;
+}
+
+/* Hardened Admin Security Gateway Form Styles */
+.admin-gate-card {
+  max-width: 440px;
+  margin: 3.5rem auto;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+  padding: 2.25rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-gate-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #4F46E5, #0F172A, #4F46E5);
+}
+
+.admin-gate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #EEF2FF;
+  border: 1px solid #C7D2FE;
+  color: #3730A3;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
