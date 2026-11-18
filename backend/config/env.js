@@ -1,4 +1,8 @@
-require('dotenv').config();
+const path = require('path');
+
+require('dotenv').config({
+    path: path.resolve(__dirname, '../../.env')
+});
 
 module.exports = {
   PORT: process.env.PORT || 3000,
@@ -13,6 +17,9 @@ module.exports = {
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || 'satinostitch_rzp_secret_atelier_2026',
   ADMIN_SECURITY_KEY: process.env.ADMIN_SECURITY_KEY || 'SATINO-SEC-2026-KEY',
   UPI_VPA: process.env.UPI_VPA || 'satinostitch@upi',
-  MERCHANT_NAME: 'SATINOSTITCH'
+  MERCHANT_NAME: 'SATINOSTITCH',
+  SUPPORT_PHONE: process.env.SUPPORT_PHONE || '+91 98765 43210',
+  SUPPORT_EMAIL: process.env.SUPPORT_EMAIL || 'concierge@satinostitch.com',
+  SUPPORT_HOURS: process.env.SUPPORT_HOURS || '10:00 AM to 5:00 PM'
 };
 

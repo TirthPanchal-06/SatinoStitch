@@ -27,6 +27,183 @@
     return cur.symbol + converted.toLocaleString('en-IN');
   };
 
+  // Exact 2-decimal currency formatter for GST breakdowns, checkout summaries & tax invoices
+  const moneyExact = n => {
+    const cur = CURRENCIES[getCurrency()] || CURRENCIES.INR;
+    const val = Number(n);
+    if (isNaN(val)) return cur.symbol + '0';
+    const converted = Math.round((val * cur.rate + Number.EPSILON) * 100) / 100;
+    const hasCents = Math.abs(converted - Math.round(converted)) > 0.001;
+    return cur.symbol + converted.toLocaleString('en-IN', {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: 2
+    });
+  };
+
+  // Live store GST configuration loaded from PostgreSQL (/api/gst/config)
+  let ACTIVE_GST_CONFIG = (window.SatinoGST && window.SatinoGST.DEFAULT_GST_CONFIG)
+    ? { ...window.SatinoGST.DEFAULT_GST_CONFIG }
+    : {
+      enabled: true,
+      gstin: '24AAECS1234P1Z8',
+      sellerState: 'Gujarat',
+      sellerStateCode: '24',
+      pricingMode: 'exclusive',
+      taxMode: 'auto',
+      defaultGstRate: 5,
+      cgstRate: 2.5,
+      sgstRate: 2.5,
+      igstRate: 5,
+      supportedRates: [0, 2.5, 5],
+      defaultHsnCode: '6204'
+    };
+
+  // Centralized Configurable Customer Support Contact State (synced live with /api/settings)
+  let SUPPORT_CONFIG = {
+    phone: '+91 98765 43210',
+    email: 'concierge@satinostitch.com',
+    phoneHours: '10:00 AM to 5:00 PM',
+    emailHours: '10:00 AM to 5:00 PM',
+    hours: '10:00 AM to 5:00 PM'
+  };
+
+  function formatTelHref(phone) {
+    const cleaned = String(phone || '').replace(/\(0\)/g, '').replace(/[^+\d]/g, '');
+    return cleaned ? `tel:${cleaned}` : 'tel:+919876543210';
+  }
+
+  function formatMailtoHref(email, subject = 'SATINOSTITCH Customer Support') {
+    const cleanEmail = String(email || '').trim().replace(/\s+/g, '');
+    const addr = cleanEmail || 'concierge@satinostitch.com';
+    return subject ? `mailto:${addr}?subject=${encodeURIComponent(subject)}` : `mailto:${addr}`;
+  }
+
+  function applySupportConfigFromSettings(settings) {
+    if (!settings || typeof settings !== 'object') return SUPPORT_CONFIG;
+    const sc = settings.support_contact || {};
+    const store = settings.store_info || {};
+    const phone = sc.phone || store.support_phone || store.phone || SUPPORT_CONFIG.phone;
+    const email = sc.email || store.support_email || store.email || SUPPORT_CONFIG.email;
+    const hours = sc.hours || store.support_hours || store.hours || SUPPORT_CONFIG.hours;
+    SUPPORT_CONFIG = {
+      phone,
+      email,
+      phoneHours: sc.phoneHours || store.phone_support_hours || hours,
+      emailHours: sc.emailHours || store.email_support_hours || hours,
+      hours
+    };
+    hydrateSupportContactUI();
+    return SUPPORT_CONFIG;
+  }
+
+  function hydrateSupportContactUI() {
+    const telHref = formatTelHref(SUPPORT_CONFIG.phone);
+    const mailHref = formatMailtoHref(SUPPORT_CONFIG.email);
+    $$('[data-support-phone-link]').forEach(el => {
+      el.setAttribute('href', telHref);
+      if (el.dataset.supportPhoneLabel !== 'custom') {
+        el.textContent = SUPPORT_CONFIG.phone;
+      }
+    });
+    $$('[data-support-email-link]').forEach(el => {
+      el.setAttribute('href', mailHref);
+      if (el.dataset.supportEmailLabel !== 'custom') {
+        el.textContent = SUPPORT_CONFIG.email;
+      }
+    });
+    $$('[data-support-phone-hours]').forEach(el => {
+      el.textContent = SUPPORT_CONFIG.phoneHours;
+    });
+    $$('[data-support-email-hours]').forEach(el => {
+      el.textContent = SUPPORT_CONFIG.emailHours;
+    });
+    $$('[data-support-hours]').forEach(el => {
+      el.textContent = SUPPORT_CONFIG.hours;
+    });
+  }
+
+  if (!window.__ssSupportCopyBound) {
+    window.__ssSupportCopyBound = true;
+    document.addEventListener('click', (e) => {
+      const copyBtn = e.target.closest('[data-copy-support-email]');
+      if (!copyBtn) return;
+      e.preventDefault();
+      const email = SUPPORT_CONFIG.email || 'concierge@satinostitch.com';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(email).then(() => {
+          toast(`Support email ${email} copied to clipboard.`);
+        }).catch(() => {
+          toast(`Support email: ${email}`);
+        });
+      } else {
+        toast(`Support email: ${email}`);
+      }
+    });
+  }
+
+  function renderCustomerSupportCardsHTML({ compact = false, showHeading = true } = {}) {
+    const telHref = formatTelHref(SUPPORT_CONFIG.phone);
+    const mailHref = formatMailtoHref(SUPPORT_CONFIG.email);
+    return `
+      <section class="customer-support-section" aria-label="Customer Support">
+        ${showHeading ? `
+          <div style="margin-bottom:${compact ? '1rem' : '1.4rem'}">
+            <h2 style="font-size:${compact ? '1.25rem' : '1.5rem'};margin:0 0 0.3rem;color:var(--wine)">Customer Support</h2>
+            <p class="muted" style="margin:0;font-size:0.9rem">Reach our concierge team by phone or email for orders, sizing, and returns.</p>
+          </div>
+        ` : ''}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem">
+          <div class="account-card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:0.9rem">
+            <div>
+              <div style="display:flex;align-items:center;gap:0.65rem;margin-bottom:0.6rem">
+                <span style="width:2.2rem;height:2.2rem;border-radius:50%;background:var(--ivory-soft);border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;color:var(--wine)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                </span>
+                <div>
+                  <h3 style="margin:0;font-size:1.05rem;color:var(--wine)">Customer Phone Support</h3>
+                  <span class="muted" style="font-size:0.82rem">Direct concierge assistance</span>
+                </div>
+              </div>
+              <p style="margin:0.4rem 0;font-size:1.05rem;font-weight:600">
+                <a href="${esc(telHref)}" data-support-phone-link style="color:var(--wine);text-decoration:none">${esc(SUPPORT_CONFIG.phone)}</a>
+              </p>
+              <p class="muted" style="margin:0.35rem 0 0;font-size:0.86rem">
+                Availability: <strong data-support-phone-hours style="color:var(--esp)">${esc(SUPPORT_CONFIG.phoneHours)}</strong>
+              </p>
+            </div>
+            <div>
+              <a class="btn ghost sm" href="${esc(telHref)}" data-support-phone-link data-support-phone-label="custom">Call Support</a>
+            </div>
+          </div>
+
+          <div class="account-card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:0.9rem">
+            <div>
+              <div style="display:flex;align-items:center;gap:0.65rem;margin-bottom:0.6rem">
+                <span style="width:2.2rem;height:2.2rem;border-radius:50%;background:var(--ivory-soft);border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;color:var(--wine)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                </span>
+                <div>
+                  <h3 style="margin:0;font-size:1.05rem;color:var(--wine)">Customer Email Support</h3>
+                  <span class="muted" style="font-size:0.82rem">Order, sizing &amp; bespoke queries</span>
+                </div>
+              </div>
+              <p style="margin:0.4rem 0;font-size:1.02rem;font-weight:600;word-break:break-word">
+                <a href="${esc(mailHref)}" data-support-email-link style="color:var(--wine);text-decoration:none">${esc(SUPPORT_CONFIG.email)}</a>
+              </p>
+              <p class="muted" style="margin:0.35rem 0 0;font-size:0.86rem">
+                Availability: <strong data-support-email-hours style="color:var(--esp)">${esc(SUPPORT_CONFIG.emailHours)}</strong>
+              </p>
+            </div>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center">
+              <a class="btn ghost sm" href="${esc(mailHref)}" data-support-email-link data-support-email-label="custom">Email Support</a>
+              <button type="button" class="btn ghost sm" data-copy-support-email title="Copy support email address">Copy Email</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const getAngleMeta = (imgUrl, index = 0, total = 5) => {
@@ -152,7 +329,7 @@
           activeWishlist = stored.map(Number).filter(n => !isNaN(n) && n > 0);
           return activeWishlist;
         }
-      } catch {}
+      } catch { }
       activeWishlist = [];
       return activeWishlist;
     },
@@ -190,8 +367,8 @@
       const res = await fetchAuth('/api/user/wishlist');
       if (res.ok) {
         const list = await res.json();
-        const ids = Array.isArray(list) 
-          ? list.map(item => Number(item.id || item.product?.id || item.productId)).filter(n => !isNaN(n) && n > 0) 
+        const ids = Array.isArray(list)
+          ? list.map(item => Number(item.id || item.product?.id || item.productId)).filter(n => !isNaN(n) && n > 0)
           : [];
         db.setWishlist(ids);
         updateWishlistUI();
@@ -281,14 +458,15 @@
     const activeCur = getCurrency();
 
     // Site Header (Excluded from Admin Panel)
-    const isAdminMode = document.body.dataset.page === 'admin' || 
-                        document.body.classList.contains('admin-dashboard-theme') || 
-                        file === 'admin.html';
+    const isAdminMode = document.body.dataset.page === 'admin' ||
+      document.body.classList.contains('admin-dashboard-theme') ||
+      file === 'admin.html';
     const headerEl = $('#site-header');
     if (headerEl) {
       if (isAdminMode) {
         headerEl.innerHTML = '';
         headerEl.style.display = 'none';
+        fetch('/api/settings').then(r => r.json()).then(s => applySupportConfigFromSettings(s)).catch(() => { });
       } else {
         headerEl.style.display = '';
         headerEl.innerHTML = `
@@ -314,9 +492,9 @@
         <header class="top">
           <div class="wrap top-in header-main-row">
             <a class="logo" href="index.html" aria-label="SATINOSTITCH Home">
-              <img src="images/emblem-gold.png" alt="SATINOSTITCH Emblem" class="site-logo-emblem">
+              <img src="images/emblem-white.png" alt="SATINOSTITCH Emblem" class="site-logo-emblem">
               <div class="site-logo-text-group">
-                <img src="images/logo-wordmark-gold.png" alt="SATINOSTITCH" class="site-logo-wordmark">
+                <img src="images/logo-wordmark-white.png" alt="SATINOSTITCH" class="site-logo-wordmark">
                 <span class="site-logo-tagline">HAUTE COUTURE &amp; SARTORIAL PRET</span>
               </div>
             </a>
@@ -335,36 +513,6 @@
 
             <!-- Header Action Icons -->
             <div class="tools">
-              <div class="notif-wrapper">
-                <button class="tool-link notif-btn" id="header-notif-btn" type="button" aria-label="Customer Notifications" title="Atelier Smart Notifications">
-                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                  </svg>
-                  <b class="tool-badge" id="notif-badge" style="display:none">0</b>
-                </button>
-                <div class="notif-dropdown" id="notif-dropdown">
-                  <div class="notif-dropdown-header">
-                    <div class="notif-header-top">
-                      <h4><span>🔔</span> Atelier Smart Notifications</h4>
-                      <div class="notif-header-actions">
-                        <button class="notif-action-link" id="notif-read-all-btn" type="button" title="Mark all notifications as read">Mark all read</button>
-                        <span class="notif-action-sep">•</span>
-                        <button class="notif-action-link" id="notif-clear-btn" type="button" title="Clear all notifications">Clear</button>
-                      </div>
-                    </div>
-                    <div class="notif-tabs-strip" id="notif-tabs-strip">
-                      <button class="notif-tab active" data-filter="all" type="button">All <span class="notif-tab-badge" id="notif-count-all">0</span></button>
-                      <button class="notif-tab" data-filter="orders" type="button">Orders &amp; Dispatch <span class="notif-tab-badge" id="notif-count-orders">0</span></button>
-                      <button class="notif-tab" data-filter="stock" type="button">Restocks <span class="notif-tab-badge" id="notif-count-stock">0</span></button>
-                      <button class="notif-tab" data-filter="promos" type="button">VIP Offers <span class="notif-tab-badge" id="notif-count-promos">0</span></button>
-                    </div>
-                  </div>
-                  <div class="notif-list" id="notif-list">
-                    <div class="notif-empty">Loading bespoke atelier notifications...</div>
-                  </div>
-                </div>
-              </div>
               <a class="tool-link" href="wishlist.html" aria-label="Wishlist" title="Saved Creations">
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
                 <span class="tool-label">Wishlist</span>
@@ -379,7 +527,7 @@
                 <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                 <span class="tool-label">${customer ? esc(customer.name.split(' ')[0]) : 'Sign In'}</span>
               </a>
-              <button class="menu-btn" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+              <button class="menu-btn" type="button" aria-label="Toggle navigation" aria-controls="nav" aria-expanded="false">☰</button>
             </div>
           </div>
 
@@ -395,84 +543,11 @@
           </nav>
         </header>`;
 
-        const notifBtn = $('#header-notif-btn');
-        const notifDrop = $('#notif-dropdown');
-        if (notifBtn && notifDrop) {
-          notifBtn.onclick = (e) => {
-            e.stopPropagation();
-            const isOpen = notifDrop.classList.contains('show');
-            if (!isOpen) {
-              notifDrop.classList.add('show');
-              fetchCustomerNotifications();
-            } else {
-              notifDrop.classList.remove('show');
-            }
-          };
-
-          document.addEventListener('click', (e) => {
-            if (!e.target.closest('.notif-wrapper')) {
-              notifDrop.classList.remove('show');
-            }
-          });
-
-          // Category Tab filter clicking
-          $$('.notif-tab').forEach(tab => {
-            tab.onclick = (e) => {
-              e.stopPropagation();
-              $$('.notif-tab').forEach(t => t.classList.remove('active'));
-              tab.classList.add('active');
-              customerNotifFilter = tab.dataset.filter || 'all';
-              renderCustomerNotificationsUI();
-            };
-          });
-
-          // Mark all read button
-          $('#notif-read-all-btn')?.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            try {
-              await fetchAuth('/api/notifications/read-all', { method: 'PUT' });
-              customerNotifications.forEach(n => n.is_read = true);
-              renderCustomerNotificationsUI();
-              toast('All smart notifications marked as read.');
-            } catch (err) {
-              console.warn(err);
-            }
-          });
-
-          // Clear all notifications button
-          $('#notif-clear-btn')?.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            try {
-              await fetchAuth('/api/notifications', { method: 'DELETE' });
-              customerNotifications = [];
-              renderCustomerNotificationsUI();
-              toast('Concierge notifications inbox cleared.');
-            } catch (err) {
-              console.warn(err);
-            }
-          });
-
-          // Initial load of notifications to set badge count
-          fetchCustomerNotifications();
-        }
-
-        // Intercept header account tool link when unauthenticated to open luxury VIP auth modal
-        const userLink = $('.user-tool-link');
-        if (userLink && !customer && document.body.dataset.page !== 'login') {
-          userLink.onclick = (e) => {
-            e.preventDefault();
-            openAuthModal({
-              actionTitle: 'Sign In to VIP Patronage',
-              message: 'Access your curated trousseau wishlist, bespoke commission milestones, and VIP atelier privileges.',
-              mode: 'in'
-            });
-          };
-        }
-
         // Live PostgreSQL Website Settings Sync for Storefront
         if (!isAdminMode) {
           fetch('/api/settings').then(r => r.json()).then(settings => {
             if (!settings) return;
+            applySupportConfigFromSettings(settings);
             const ann = settings.announcement;
             if (ann) {
               const ticker = $('.announcement-ticker');
@@ -501,7 +576,7 @@
               if (h1 && hero.headline) h1.textContent = hero.headline;
               if (p && hero.subheadline) p.textContent = hero.subheadline;
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }
     }
@@ -518,8 +593,8 @@
         <footer>
           <div class="wrap foot-grid">
             <div class="foot-logo-brand">
-              <img src="images/emblem-gold.png" alt="" class="foot-logo-emblem">
-              <img src="images/logo-wordmark-gold.png" alt="SATINOSTITCH" class="foot-logo-wordmark">
+              <img src="images/emblem-white.png" alt="" class="foot-logo-emblem">
+              <img src="images/logo-wordmark-white.png" alt="SATINOSTITCH" class="foot-logo-wordmark">
               <p style="margin-top:0.8rem">Woven for weddings, cut for every day. Curating authentic Indian heritage textiles alongside contemporary sartorial tailoring with uncompromising precision.</p>
               <div style="margin-top:1.2rem;display:flex;gap:0.8rem">
                 <span class="hero-pill" style="font-size:0.75rem;background:rgba(255,255,255,0.1);color:var(--gold-light);border-color:rgba(198,161,91,0.3)">Silk Mark Certified</span>
@@ -538,7 +613,13 @@
               <a href="about.html">Our Heritage Story</a>
               <a href="contact.html">Bespoke Inquiries</a>
               <a href="login.html">Account &amp; Orders</a>
+              <a href="returns.html">Returns &amp; Refunds</a>
               <a href="javascript:void(0)" onclick="openFitFinder()">Virtual Size Finder</a>
+              <div style="margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.12);font-size:0.86rem">
+                <a href="${esc(formatTelHref(SUPPORT_CONFIG.phone))}" data-support-phone-link style="display:block;margin-bottom:0.25rem">${esc(SUPPORT_CONFIG.phone)}</a>
+                <a href="${esc(formatMailtoHref(SUPPORT_CONFIG.email))}" data-support-email-link style="display:block;margin-bottom:0.25rem">${esc(SUPPORT_CONFIG.email)}</a>
+                <span style="display:block;opacity:0.78;font-size:0.78rem">Support: <span data-support-hours>${esc(SUPPORT_CONFIG.hours)}</span></span>
+              </div>
             </div>
             <div>
               <h3>The VIP Atelier</h3>
@@ -599,16 +680,66 @@
       }
     }
 
-    // Mobile Navigation Toggle
+    // Mobile Navigation Toggle (accessible + closes on outside tap, Escape, link click, or desktop resize)
     const menuBtn = $('.menu-btn');
-    if (menuBtn) {
-      menuBtn.onclick = () => {
-        const nav = $('#nav');
-        if (!nav) return;
-        const expanded = nav.classList.toggle('open');
-        menuBtn.setAttribute('aria-expanded', expanded);
-        menuBtn.textContent = expanded ? '✕' : '☰';
+    const navEl = $('#nav');
+    if (menuBtn && navEl) {
+      const setNavOpen = (open) => {
+        navEl.classList.toggle('open', open);
+        menuBtn.setAttribute('aria-expanded', String(open));
+        menuBtn.textContent = open ? '✕' : '☰';
       };
+
+      menuBtn.onclick = (e) => {
+        e.stopPropagation();
+        setNavOpen(!navEl.classList.contains('open'));
+      };
+
+      navEl.querySelectorAll('a.nav-item').forEach(link => {
+        link.addEventListener('click', () => setNavOpen(false));
+      });
+
+      if (!window.__ssMobileNavBound) {
+        window.__ssMobileNavBound = true;
+        document.addEventListener('click', (e) => {
+          const n = $('#nav');
+          const b = $('.menu-btn');
+          if (n && n.classList.contains('open') && !e.target.closest('#nav') && !e.target.closest('.menu-btn')) {
+            n.classList.remove('open');
+            if (b) {
+              b.setAttribute('aria-expanded', 'false');
+              b.textContent = '☰';
+            }
+          }
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            const n = $('#nav');
+            const b = $('.menu-btn');
+            if (n && n.classList.contains('open')) {
+              n.classList.remove('open');
+              if (b) {
+                b.setAttribute('aria-expanded', 'false');
+                b.textContent = '☰';
+                b.focus();
+              }
+            }
+          }
+        });
+        window.addEventListener('resize', () => {
+          if (window.innerWidth > 960) {
+            const n = $('#nav');
+            const b = $('.menu-btn');
+            if (n && n.classList.contains('open')) {
+              n.classList.remove('open');
+              if (b) {
+                b.setAttribute('aria-expanded', 'false');
+                b.textContent = '☰';
+              }
+            }
+          }
+        });
+      }
     }
 
     // Newsletter Submission
@@ -697,9 +828,9 @@
   /* ---------- Smooth Luxury Atelier Cursor ---------- */
   function initLuxuryCursor() {
     if (window.__ssCursorInit) return;
-    const isAdmin = document.body.dataset.page === 'admin' || 
-                    document.body.classList.contains('admin-dashboard-theme') ||
-                    location.pathname.endsWith('admin.html');
+    const isAdmin = document.body.dataset.page === 'admin' ||
+      document.body.classList.contains('admin-dashboard-theme') ||
+      location.pathname.endsWith('admin.html');
     if (isAdmin || window.matchMedia('(pointer: coarse)').matches) return;
     window.__ssCursorInit = true;
 
@@ -814,365 +945,27 @@
       <span>${esc(msg)}</span>
       ${linkHref && linkText ? `<a href="${linkHref}">${esc(linkText)}</a>` : ''}
     `;
+    t.style.display = 'flex';
+    t.classList.remove('hide');
     t.classList.add('show');
+
+    // Reset animation so toastIn replays cleanly even if re-triggered quickly
+    t.style.animation = 'none';
+    void t.offsetHeight;
+    t.style.animation = '';
+
     clearTimeout(t.timer);
-    t.timer = setTimeout(() => t.classList.remove('show'), 3800);
+    clearTimeout(t.hideTimer);
+
+    t.timer = setTimeout(() => {
+      t.classList.remove('show');
+      t.classList.add('hide');
+      t.hideTimer = setTimeout(() => {
+        t.style.display = 'none';
+      }, 350);
+    }, 3800);
   }
   window.toast = toast;
-
-  /* ---------- Customer Atelier Concierge & Seasonal Notifications ---------- */
-  function getConciergeAdviceForProduct(p) {
-    if (!p) return null;
-    const name = (p.name || '').toLowerCase();
-    const type = (p.type || '').toLowerCase();
-    const fabric = (p.fabric || '').toLowerCase();
-    const col = (p.col || '').toLowerCase();
-
-    // 1. Wedding & Ceremonial Season Edit
-    if (col === 'wedding' || name.includes('wedding') || name.includes('bridal') || name.includes('anarkali') || name.includes('lehenga') || name.includes('zari') || type.includes('saree') || name.includes('saree')) {
-      return {
-        badge: '💍 Wedding Season Edit',
-        headline: "It's Wedding Month!",
-        compliment: `An exquisite choice! The ${p.name} will suit perfectly on you for grand celebrations and wedding soirées.`,
-        review: "The antique gold zari border and rich silk drape received endless compliments — truly royal couture!",
-        rating: 5
-      };
-    }
-
-    // 2. Festive Wear / Kurta Sets / Tie-dye
-    if (col === 'festive' || name.includes('bandhani') || name.includes('kurta') || name.includes('chanderi') || name.includes('palazzo') || type.includes('suit') || type.includes('kurta')) {
-      return {
-        badge: '✨ Festive Celebrations Edit',
-        headline: "A Luminous Festive Choice!",
-        compliment: `A stunning selection! The handcrafted tie-dye and fluid drape of ${p.name} will suit you wonderfully for celebratory gatherings.`,
-        review: "Vibrant madder hues and featherlight silk palazzo — so breathable and flattering on any silhouette!",
-        rating: 5
-      };
-    }
-
-    // 3. Work Wardrobe / Structured Western Pret / Blazers
-    if (col === 'work' || p.cat === 'western' || type.includes('blazer') || type.includes('dress') || type.includes('trousers') || name.includes('blazer') || name.includes('linen') || name.includes('satin')) {
-      return {
-        badge: '💼 Sartorial Power & Poise',
-        headline: "Impeccable Boardroom Elegance!",
-        compliment: `A commanding choice! The sharp architectural tailoring of ${p.name} will accentuate your poise with modern sophistication.`,
-        review: "Sharp tailoring, premium breathable fabric, and unmatched luxury finish. Received compliments all day!",
-        rating: 5
-      };
-    }
-
-    // 4. Everyday Cotton / Mulmul
-    if (col === 'everyday' || fabric.includes('cotton') || fabric.includes('mulmul') || name.includes('cotton')) {
-      return {
-        badge: '🌸 Daytime Artisan Splendor',
-        headline: "Understated Everyday Splendor!",
-        compliment: `A delightful choice! The pure artisan texture of ${p.name} will suit your daily style with graceful, breathable comfort.`,
-        review: "Incredibly soft handloom cotton with timeless grace. Perfect for both office mornings and tea parties!",
-        rating: 5
-      };
-    }
-
-    // Default Universal Haute Couture
-    return {
-      badge: '👑 Curated Atelier Masterpiece',
-      headline: "An Exquisite Trousseau Addition!",
-      compliment: `A distinguished choice! The ${p.name} is hand-finished in our atelier and will suit your silhouette impeccably.`,
-      review: "Unrivaled artisanal craftsmanship, lustrous fabric sheen, and timeless presence — worth every rupee!",
-      rating: 5
-    };
-  }
-
-  function sendCustomerWishlistNotification(p) {
-    if (!p) return;
-    const advice = getConciergeAdviceForProduct(p);
-    if (!advice) return;
-
-    // 1. Show interactive Concierge Toast Notification
-    let cToast = $('#concierge-toast');
-    if (!cToast) {
-      cToast = document.createElement('div');
-      cToast.id = 'concierge-toast';
-      cToast.className = 'concierge-toast';
-      document.body.appendChild(cToast);
-    }
-
-    cToast.innerHTML = `
-      <div class="concierge-toast-header">
-        <span class="concierge-toast-badge">${advice.badge}</span>
-        <button class="concierge-toast-close" id="concierge-toast-close" aria-label="Close notification">&times;</button>
-      </div>
-      <div class="concierge-toast-body">
-        <img class="concierge-toast-img" src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}">
-        <div class="concierge-toast-content">
-          <h4>${advice.headline}</h4>
-          <p class="concierge-toast-compliment">${advice.compliment}</p>
-          <div class="concierge-toast-review">
-            <strong>Verified Patron Review:</strong> "${advice.review}" <span style="color:#d97706;font-style:normal">★★★★★</span>
-          </div>
-          <div class="concierge-toast-actions">
-            <button class="concierge-toast-btn primary" id="toast-add-bag-btn">Add to Bag (${money(p.price)})</button>
-            <a class="concierge-toast-btn secondary" href="wishlist.html">View Saved Trousseau</a>
-          </div>
-        </div>
-      </div>
-    `;
-
-    cToast.style.display = 'block';
-    cToast.classList.add('show');
-
-    $('#concierge-toast-close').onclick = () => {
-      cToast.classList.remove('show');
-      setTimeout(() => { cToast.style.display = 'none'; }, 300);
-    };
-
-    $('#toast-add-bag-btn').onclick = () => {
-      addToCart(p.id, 'M', 1, p.colors?.[0]?.name || 'Selected Shade');
-      cToast.classList.remove('show');
-      setTimeout(() => { cToast.style.display = 'none'; }, 300);
-      toast(`${p.name} added to your shopping bag!`, 'cart.html', 'View Bag');
-    };
-
-    clearTimeout(cToast.timer);
-    cToast.timer = setTimeout(() => {
-      cToast.classList.remove('show');
-      setTimeout(() => { cToast.style.display = 'none'; }, 300);
-    }, 7000);
-
-    // 2. Persist notification to customer notification inbox
-    const savedNotifs = db.get('customer_notifications', []);
-    const newNotif = {
-      id: Date.now(),
-      productId: p.id,
-      productName: p.name,
-      productImage: p.image || 'images/p1.jpg',
-      productPrice: p.price,
-      headline: advice.headline,
-      compliment: advice.compliment,
-      review: advice.review,
-      badge: advice.badge,
-      timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-      read: false
-    };
-
-    savedNotifs.unshift(newNotif);
-    if (savedNotifs.length > 10) savedNotifs.pop();
-    db.set('customer_notifications', savedNotifs);
-    updateNotificationBellUI();
-  }
-
-  /* ---------- Smart Customer Notifications System ---------- */
-  let customerNotifications = [];
-  let customerNotifFilter = 'all';
-
-  function formatNotificationTime(dateStr) {
-    if (!dateStr) return 'Recently';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Recently';
-    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-    if (diffSec < 60) return 'Just now';
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
-    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
-  }
-
-  async function fetchCustomerNotifications() {
-    try {
-      const res = await fetchAuth('/api/notifications');
-      if (res.ok) {
-        const data = await res.json();
-        customerNotifications = data.notifications || [];
-        renderCustomerNotificationsUI(data.counts, data.unreadCount);
-        return customerNotifications;
-      }
-    } catch (err) {
-      console.warn('Could not fetch notifications from server:', err);
-    }
-    // Fallback to local storage if offline
-    customerNotifications = db.get('customer_notifications', []);
-    renderCustomerNotificationsUI();
-    return customerNotifications;
-  }
-
-  function renderCustomerNotificationsUI(counts = null, unreadCount = null) {
-    const unread = unreadCount !== null ? unreadCount : customerNotifications.filter(n => !n.is_read).length;
-    const badge = $('#notif-badge');
-    if (badge) {
-      badge.textContent = unread;
-      badge.style.display = unread > 0 ? 'inline-block' : 'none';
-    }
-
-    const cAll = customerNotifications.length;
-    const cOrders = customerNotifications.filter(n => n.type === 'order_confirmation' || n.type === 'shipping_update').length;
-    const cStock = customerNotifications.filter(n => n.type === 'back_in_stock').length;
-    const cPromos = customerNotifications.filter(n => n.type === 'promotional').length;
-
-    if ($('#notif-count-all')) $('#notif-count-all').textContent = counts?.all ?? cAll;
-    if ($('#notif-count-orders')) $('#notif-count-orders').textContent = counts?.orders ?? cOrders;
-    if ($('#notif-count-stock')) $('#notif-count-stock').textContent = counts?.stock ?? cStock;
-    if ($('#notif-count-promos')) $('#notif-count-promos').textContent = counts?.promos ?? cPromos;
-
-    let filtered = customerNotifications;
-    if (customerNotifFilter === 'orders') {
-      filtered = customerNotifications.filter(n => n.type === 'order_confirmation' || n.type === 'shipping_update');
-    } else if (customerNotifFilter === 'stock') {
-      filtered = customerNotifications.filter(n => n.type === 'back_in_stock');
-    } else if (customerNotifFilter === 'promos') {
-      filtered = customerNotifications.filter(n => n.type === 'promotional');
-    }
-
-    const list = $('#notif-list');
-    if (!list) return;
-
-    if (filtered.length === 0) {
-      const emptyMessages = {
-        all: 'No notifications in your trousseau concierge inbox.',
-        orders: 'No active orders or shipping dispatches currently in transit.',
-        stock: 'No restock alerts at this time. Subscribe on any creation page for instant notifications.',
-        promos: 'No active VIP promo privileges currently available.'
-      };
-      list.innerHTML = `<div class="notif-empty">${emptyMessages[customerNotifFilter] || emptyMessages.all}</div>`;
-      return;
-    }
-
-    list.innerHTML = filtered.map(n => {
-      const isUnread = !n.is_read;
-      let meta = {};
-      try {
-        meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata || '{}') : (n.metadata || {});
-      } catch {}
-
-      let pillClass = 'order';
-      let pillLabel = n.badge || 'Atelier Update';
-      let typeClass = 'type-' + n.type;
-      if (n.type === 'shipping_update') pillClass = 'shipping';
-      else if (n.type === 'back_in_stock') pillClass = 'stock';
-      else if (n.type === 'promotional') pillClass = 'promo';
-
-      const timeStr = formatNotificationTime(n.created_at);
-
-      let actionHtml = '';
-      if (n.type === 'order_confirmation') {
-        actionHtml = `
-          <a href="${n.link || 'account.html?tab=orders'}" class="notif-cta-btn solid">
-            <span>📦</span> View Commission &rarr;
-          </a>
-        `;
-      } else if (n.type === 'shipping_update') {
-        const trk = meta.trackingNumber || 'SS-EXP-847291';
-        actionHtml = `
-          <button class="notif-cta-btn notif-copy-trk-btn" data-trk="${trk}" type="button">
-            <span>📋</span> Copy Tracking
-          </button>
-          <a href="${n.link || 'account.html?tab=orders'}" class="notif-cta-btn solid">
-            <span>🚚</span> Live Tracking &rarr;
-          </a>
-        `;
-      } else if (n.type === 'back_in_stock') {
-        const pid = meta.productId;
-        actionHtml = `
-          <a href="${n.link || 'shop.html'}" class="notif-cta-btn">View Piece</a>
-          ${pid ? `<button class="notif-cta-btn solid notif-add-bag-btn" data-pid="${pid}" type="button"><span>✦</span> Add to Bag</button>` : ''}
-        `;
-      } else if (n.type === 'promotional') {
-        const code = meta.promoCode || 'HERITAGE10';
-        actionHtml = `
-          <span class="notif-promo-copy-chip notif-copy-code-chip" data-code="${code}" title="Click to copy privilege code">
-            <span>🏷️</span> ${code} (Tap to Copy)
-          </span>
-          <a href="${n.link || 'shop.html'}" class="notif-cta-btn solid">Shop Trousseau &rarr;</a>
-        `;
-      }
-
-      let extraBox = '';
-      if (n.type === 'shipping_update' && (meta.courier || meta.trackingNumber)) {
-        extraBox = `<div class="notif-extra-box"><strong>Courier:</strong> ${esc(meta.courier || 'Bluedart Apex Express')} &bull; <strong>Tracking:</strong> ${esc(meta.trackingNumber || 'Pending')} &bull; <strong>ETA:</strong> ${esc(meta.eta || '48 Hours')}</div>`;
-      } else if (n.type === 'back_in_stock' && meta.stock) {
-        extraBox = `<div class="notif-extra-box"><strong>Limited Wave:</strong> ${meta.stock} handcrafted pieces replenished &bull; Price: ${money(meta.price || 14990)}</div>`;
-      }
-
-      return `
-        <div class="notif-item ${isUnread ? 'unread' : 'read'} ${typeClass}" data-id="${n.id}">
-          <img class="notif-item-img" src="${n.image || 'images/emblem.png'}" alt="Notification Preview">
-          <div class="notif-body">
-            <div class="notif-meta-row">
-              <span class="notif-pill ${pillClass}">${esc(pillLabel)}</span>
-              <div style="display:flex;align-items:center;gap:0.4rem">
-                <span class="notif-time">${timeStr}</span>
-                ${isUnread ? `<span class="notif-unread-dot" title="Unread notification"></span>` : ''}
-              </div>
-            </div>
-            <div class="notif-item-title">${esc(n.title)}</div>
-            <div class="notif-item-text">${esc(n.message)}</div>
-            ${extraBox}
-            <div class="notif-actions-row">
-              <div class="notif-action-btn-group">
-                ${actionHtml}
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    attachNotifInteractiveListeners();
-  }
-
-  function attachNotifInteractiveListeners() {
-    $$('.notif-item.unread').forEach(item => {
-      item.addEventListener('click', async (e) => {
-        if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.notif-promo-copy-chip')) return;
-        const id = item.dataset.id;
-        if (id) {
-          try {
-            await fetchAuth(`/api/notifications/${id}/read`, { method: 'PUT' });
-            const hit = customerNotifications.find(n => String(n.id) === String(id));
-            if (hit) hit.is_read = true;
-            renderCustomerNotificationsUI();
-          } catch {}
-        }
-      });
-    });
-
-    $$('.notif-copy-trk-btn').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const trk = btn.dataset.trk;
-        if (trk) {
-          navigator.clipboard?.writeText(trk);
-          toast(`Courier tracking #${trk} copied to clipboard!`);
-        }
-      };
-    });
-
-    $$('.notif-copy-code-chip').forEach(chip => {
-      chip.onclick = (e) => {
-        e.stopPropagation();
-        const code = chip.dataset.code || 'HERITAGE10';
-        navigator.clipboard?.writeText(code);
-        toast(`VIP Privilege Code ${code} copied to clipboard! Applied at checkout.`);
-      };
-    });
-
-    $$('.notif-add-bag-btn').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const pid = Number(btn.dataset.pid);
-        if (pid) {
-          addToCart(pid, 'M', 1);
-          toast('Replenished creation added to your shopping bag!', 'cart.html', 'View Bag');
-        }
-      };
-    });
-  }
-
-  function updateNotificationBellUI() {
-    fetchCustomerNotifications();
-  }
-
-  window.sendCustomerWishlistNotification = sendCustomerWishlistNotification;
-  window.updateNotificationBellUI = updateNotificationBellUI;
-  window.fetchCustomerNotifications = fetchCustomerNotifications;
 
   /* ==========================================================================
      VIP Patron Luxury Authentication Modal & Feature Access Gate
@@ -1202,7 +995,7 @@
           <button class="vip-auth-close" id="vip-modal-close" aria-label="Close dialog">&times;</button>
           <div class="vip-auth-body">
             <div class="vip-auth-header">
-              <img src="images/emblem.png" alt="SATINOSTITCH" class="vip-auth-emblem">
+              <img src="images/emblem-white.png" alt="SATINOSTITCH" class="vip-auth-emblem">
               <h2 class="vip-auth-title" id="vip-modal-title">${esc(title)}</h2>
               <p class="vip-auth-sub">${esc(sub)}</p>
             </div>
@@ -1322,7 +1115,7 @@
       const forgotBtn = $('#vip-forgot-btn');
       if (forgotBtn) {
         forgotBtn.onclick = () => {
-          showAlert('Please contact atelier concierge support at concierge@satinostitch.com to securely reset your credentials.', 'success');
+          showAlert(`Please contact atelier concierge support at ${SUPPORT_CONFIG.email} (${SUPPORT_CONFIG.hours}) to securely reset your credentials.`, 'success');
         };
       }
 
@@ -1378,7 +1171,7 @@
           await syncUserWishlist();
           const localCart = db.get('cart', []);
           if (localCart.length) {
-            fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
+            fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => { });
           }
 
           toast(`Welcome, ${data.user.name}!`);
@@ -1423,6 +1216,91 @@
   }
   window.openAuthModal = openAuthModal;
 
+  /* ---------- Variant Stock Resolution Helpers ---------- */
+  function getProductVariantMeta(p) {
+    if (!p) return { sizes: ['XS', 'S', 'M', 'L', 'XL'], colors: [], variants: [] };
+    const variants = Array.isArray(p.variants) ? p.variants : [];
+
+    // Collect sizes from product.sizes plus any present in variants
+    const rawSizes = Array.isArray(p.sizes) && p.sizes.length ? p.sizes : [];
+    const sizes = [...rawSizes];
+    variants.forEach(v => {
+      if (v.size && !sizes.includes(v.size)) sizes.push(v.size);
+    });
+    if (!sizes.length) sizes.push('XS', 'S', 'M', 'L', 'XL');
+
+    // Collect colors from product.colors plus any present in variants
+    const colorMap = new Map();
+    const rawColors = Array.isArray(p.colors) && p.colors.length ? p.colors : [];
+    rawColors.forEach(c => {
+      const name = typeof c === 'string' ? c : (c.name || '');
+      const hex = typeof c === 'string' ? (p.c1 || '#5B1835') : (c.hex || '#5B1835');
+      if (name && !colorMap.has(name.toLowerCase())) {
+        colorMap.set(name.toLowerCase(), { name, hex });
+      }
+    });
+    variants.forEach(v => {
+      const name = v.colorName || v.color_name || '';
+      const hex = v.colorHex || v.color_hex || '#5B1835';
+      if (name && !colorMap.has(name.toLowerCase())) {
+        colorMap.set(name.toLowerCase(), { name, hex });
+      }
+    });
+    if (!colorMap.size) {
+      colorMap.set('primary shade', { name: 'Primary Shade', hex: p.c1 || '#5B1835' });
+      if (p.c2 && p.c2 !== p.c1) {
+        colorMap.set('accent shade', { name: 'Accent Shade', hex: p.c2 });
+      }
+    }
+
+    return { sizes, colors: Array.from(colorMap.values()), variants };
+  }
+
+  function getVariantStockFor(p, selSize, selColor) {
+    if (!p) return 0;
+    const variants = Array.isArray(p.variants) ? p.variants : [];
+    if (!variants.length) return Math.max(0, Number(p.stock || 0));
+
+    const cleanSize = String(selSize || '').trim().toUpperCase();
+    const cleanColor = String(selColor || '').trim().toLowerCase();
+
+    let match = variants.find(v =>
+      String(v.size || '').trim().toUpperCase() === cleanSize &&
+      String(v.colorName || v.color_name || '').trim().toLowerCase() === cleanColor
+    );
+
+    if (!match && (!cleanColor || cleanColor === 'selected shade')) {
+      const activeForSize = variants.filter(v =>
+        String(v.size || '').trim().toUpperCase() === cleanSize &&
+        v.isActive !== false
+      );
+      match = activeForSize.find(v => Number(v.stock || 0) > 0) || activeForSize[0] || null;
+    }
+
+    if (!match || match.isActive === false) return 0;
+    return Math.max(0, Number(match.stock || 0));
+  }
+
+  function isColorInStock(p, colorName) {
+    const { sizes, variants } = getProductVariantMeta(p);
+    if (!variants.length) return Number(p?.stock || 0) > 0;
+    return sizes.some(s => getVariantStockFor(p, s, colorName) > 0);
+  }
+
+  function getFirstAvailableVariant(p) {
+    const { sizes, colors, variants } = getProductVariantMeta(p);
+    if (variants.length) {
+      for (const c of colors) {
+        for (const s of sizes) {
+          if (getVariantStockFor(p, s, c.name) > 0) {
+            return { size: s, color: c.name };
+          }
+        }
+      }
+    }
+    return { size: sizes[0] || 'M', color: colors[0]?.name || 'Selected Shade' };
+  }
+
   /* ---------- Cart and Wishlist Operations ---------- */
   function addToCart(id, size = 'M', qty = 1, color = null) {
     const u = db.user();
@@ -1431,17 +1309,33 @@
         actionTitle: 'Reserve in Atelier Bag',
         message: 'Please sign in or create an account to add this handcrafted creation to your shopping bag.',
         onAuthenticated: () => {
-          addToCart(id, size, qty, color);
-          toast('Added to your shopping bag!', 'cart.html', 'View Bag');
+          const ok = addToCart(id, size, qty, color);
+          if (ok) toast('Added to your shopping bag!', 'cart.html', 'View Bag');
         }
       });
-      return;
+      return false;
     }
 
     const cart = db.get('cart', []);
     const p = byId(id);
-    const selectedColor = color || (p?.colors?.[0]?.name) || 'Selected Shade';
-    const hit = cart.find(i => i.id === id && i.size === size && i.color === selectedColor);
+    const meta = getProductVariantMeta(p);
+    const selectedColor = color || (meta.colors[0]?.name) || 'Selected Shade';
+
+    if (p) {
+      const available = getVariantStockFor(p, size, selectedColor);
+      const existing = cart.find(i => Number(i.id) === Number(id) && i.size === size && i.color === selectedColor);
+      const existingQty = existing ? Number(existing.qty || 0) : 0;
+      if (available <= 0) {
+        toast(`Selected variant (${size} · ${selectedColor}) is currently out of stock.`);
+        return false;
+      }
+      if (existingQty + qty > available) {
+        toast(`Only ${available} unit(s) available for ${p.name} (${size} · ${selectedColor}).`);
+        return false;
+      }
+    }
+
+    const hit = cart.find(i => Number(i.id) === Number(id) && i.size === size && i.color === selectedColor);
     hit ? hit.qty += qty : cart.push({ id, size, qty, color: selectedColor });
     db.set('cart', cart);
 
@@ -1450,14 +1344,20 @@
       fetchAuth('/api/cart', {
         method: 'POST',
         body: { productId: id, size, color: selectedColor, quantity: qty }
-      }).catch(() => {});
+      }).then(async r => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          if (err.error) toast(err.error);
+        }
+      }).catch(() => { });
     } else {
       fetch('/api/activity/cart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId: id, size, color: selectedColor, quantity: qty })
-      }).catch(() => {});
+      }).catch(() => { });
     }
+    return true;
   }
 
   function toggleWish(id) {
@@ -1491,14 +1391,7 @@
 
     if (on) {
       const prod = byId(numId);
-      if (prod) {
-        sendCustomerWishlistNotification(prod);
-      } else {
-        fetch(`/api/products/${numId}`)
-          .then(r => r.json())
-          .then(p => { if (p && p.name) sendCustomerWishlistNotification(p); })
-          .catch(() => {});
-      }
+      toast(`${prod ? prod.name : 'Creation'} saved to your wishlist.`, 'wishlist.html', 'View Wishlist');
     }
 
     return on;
@@ -1506,21 +1399,114 @@
 
   const lines = () => db.get('cart', []).map(i => ({ ...i, p: byId(i.id) })).filter(l => l.p);
 
-  function totals(ls) {
-    const sub = ls.reduce((s, l) => s + l.p.price * l.qty, 0);
+  function getProductDisplayPricing(p) {
+    const basePrice = Number(p?.originalPrice ?? p?.price ?? 0);
+    const disc = p?.activeDiscount || null;
+    if (disc && Number(disc.discountedPrice) > 0 && Number(disc.discountedPrice) < basePrice) {
+      const discountedPrice = Number(disc.discountedPrice);
+      const savings = Number(disc.savings ?? Math.round((basePrice - discountedPrice + Number.EPSILON) * 100) / 100);
+      const discountPercent = Number(disc.discountPercent ?? Math.round((savings / basePrice) * 100));
+      return {
+        hasActiveDiscount: true,
+        originalPrice: basePrice,
+        effectivePrice: discountedPrice,
+        savings,
+        discountPercent,
+        discountName: disc.name || 'Special Discount',
+        discountType: disc.discountType,
+        discountValue: disc.discountValue
+      };
+    }
+    const oldVal = p?.old || p?.oldPrice || p?.old_price;
+    const legacyOld = oldVal && Number(oldVal) > basePrice ? Number(oldVal) : null;
+    return {
+      hasActiveDiscount: false,
+      originalPrice: basePrice,
+      effectivePrice: basePrice,
+      savings: legacyOld ? Math.round(legacyOld - basePrice) : 0,
+      discountPercent: legacyOld ? Math.round(((legacyOld - basePrice) / legacyOld) * 100) : null,
+      legacyOldPrice: legacyOld,
+      discountName: null
+    };
+  }
+
+  function totals(ls, customerState = null) {
+    let sub = 0;
+    let productDiscountSavings = 0;
+    ls.forEach(l => {
+      const pr = getProductDisplayPricing(l.p);
+      const qty = Number(l.qty || 1);
+      sub += pr.effectivePrice * qty;
+      if (pr.hasActiveDiscount) {
+        productDiscountSavings += pr.savings * qty;
+      }
+    });
+    sub = Math.round((sub + Number.EPSILON) * 100) / 100;
+    productDiscountSavings = Math.round((productDiscountSavings + Number.EPSILON) * 100) / 100;
+
     const promo = (db.get('promo', '') || '').toUpperCase();
     let disc = 0;
     if (promo === 'HERITAGE10') disc = Math.round(sub * 0.1);
     else if (promo === 'ROYAL15' && sub >= 5000) disc = Math.round(sub * 0.15);
     else if (promo === 'ATELIER20' && sub >= 10000) disc = Math.round(sub * 0.2);
 
+    if (window.SatinoGST) {
+      const gst = window.SatinoGST.calculateOrderGst({
+        items: ls.map(l => {
+          const pr = getProductDisplayPricing(l.p);
+          return {
+            id: l.p.id,
+            name: l.p.name,
+            price: pr.effectivePrice,
+            qty: l.qty,
+            size: l.size,
+            color: l.color,
+            gstRate: l.p.gstRate ?? l.p.gst_rate,
+            gstType: l.p.gstType ?? l.p.gst_type,
+            hsnCode: l.p.hsnCode ?? l.p.hsn_code
+          };
+        }),
+        discount: disc,
+        customerState,
+        config: ACTIVE_GST_CONFIG
+      });
+      return {
+        sub: gst.subtotal,
+        disc: gst.discount,
+        productDiscountSavings,
+        ship: gst.shippingFee,
+        total: gst.grandTotal,
+        taxableAmount: gst.taxableAmount,
+        cgstAmount: gst.cgstAmount,
+        sgstAmount: gst.sgstAmount,
+        igstAmount: gst.igstAmount,
+        totalGst: gst.totalGst,
+        supplyType: gst.supplyType,
+        pricingMode: gst.pricingMode,
+        placeOfSupply: gst.placeOfSupply,
+        slabs: gst.slabs,
+        gst
+      };
+    }
+
     const ship = !sub || (sub - disc >= 3000) ? 0 : 150;
-    return { sub, disc, ship, total: sub - disc + ship };
+    return { sub, disc, productDiscountSavings, ship, total: sub - disc + ship, taxableAmount: Math.max(0, sub - disc), cgstAmount: 0, sgstAmount: 0, igstAmount: 0, totalGst: 0, supplyType: 'exempt', pricingMode: 'inclusive', slabs: [] };
   }
 
   function summary(ls, t) {
     const remainingForFreeShip = Math.max(0, 3000 - (t.sub - t.disc));
     const progressPct = Math.min(100, Math.round(((t.sub - t.disc) / 3000) * 100));
+    const hasGst = t.totalGst > 0 || (ACTIVE_GST_CONFIG && ACTIVE_GST_CONFIG.enabled);
+    const isInclusive = (t.pricingMode || 'inclusive') === 'inclusive';
+
+    // Derive readable CGST/SGST/IGST rate labels from computed slabs
+    const slabs = Array.isArray(t.slabs) ? t.slabs : [];
+    const cgstRates = [...new Set(slabs.filter(s => s.cgstAmount > 0).map(s => s.cgstRate))];
+    const sgstRates = [...new Set(slabs.filter(s => s.sgstAmount > 0).map(s => s.sgstRate))];
+    const igstRates = [...new Set(slabs.filter(s => s.igstAmount > 0).map(s => s.igstRate))];
+    const cgstLbl = cgstRates.length === 1 ? `CGST (${cgstRates[0]}%)` : 'CGST';
+    const sgstLbl = sgstRates.length === 1 ? `SGST (${sgstRates[0]}%)` : 'SGST';
+    const igstLbl = igstRates.length === 1 ? `IGST (${igstRates[0]}%)` : 'IGST';
 
     return `
       <div class="shipping-progress">
@@ -1533,30 +1519,82 @@
         </div>
       </div>
 
-      ${ls.map(l => `
-        <div class="row">
-          <span>${esc(l.p.name)} <span class="muted">(${l.size}${l.color ? ` · ${l.color}` : ''})</span> × ${l.qty}</span>
-          <span style="font-weight:500">${money(l.p.price * l.qty)}</span>
-        </div>
-      `).join('')}
+      ${ls.map(l => {
+        const pr = getProductDisplayPricing(l.p);
+        const rate = l.p.gstRate ?? l.p.gst_rate ?? ACTIVE_GST_CONFIG.defaultGstRate ?? 5;
+        return `
+          <div class="row">
+            <span>
+              ${esc(l.p.name)} <span class="muted">(${l.size}${l.color ? ` · ${l.color}` : ''})</span> × ${l.qty}
+              <span class="muted" style="font-size:0.75rem;display:block">GST ${rate}%${pr.hasActiveDiscount ? ` · <span style="color:var(--success);font-weight:600">Saved ${moneyExact(pr.savings * l.qty)}</span>` : ''}</span>
+            </span>
+            <span style="font-weight:500;text-align:right">
+              ${moneyExact(pr.effectivePrice * l.qty)}
+              ${pr.hasActiveDiscount ? `<span class="muted" style="font-size:0.75rem;text-decoration:line-through;display:block">${moneyExact(pr.originalPrice * l.qty)}</span>` : ''}
+            </span>
+          </div>
+        `;
+      }).join('')}
       
       <div class="row" style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px dashed var(--line)">
         <span>Subtotal</span>
-        <span>${money(t.sub)}</span>
+        <span>${moneyExact(t.sub)}</span>
       </div>
+      ${t.productDiscountSavings > 0 ? `
+        <div class="row" style="color:var(--success);font-weight:500;font-size:0.86rem">
+          <span>Selected Product Discount Savings</span>
+          <span>−${moneyExact(t.productDiscountSavings)} (Applied)</span>
+        </div>
+      ` : ''}
       ${t.disc ? `
         <div class="row" style="color:var(--success);font-weight:500">
           <span>Promo Applied (${db.get('promo', '')})</span>
-          <span>−${money(t.disc)}</span>
+          <span>−${moneyExact(t.disc)}</span>
+        </div>
+      ` : ''}
+      ${hasGst ? `
+        <div style="margin:0.45rem 0;padding:0.55rem 0.7rem;background:var(--ivory-soft);border:1px solid var(--line);border-radius:var(--radius-sm)">
+          <div class="row" style="font-size:0.84rem;margin:0.15rem 0">
+            <span>Taxable Amount</span>
+            <span style="font-weight:500">${moneyExact(t.taxableAmount)}</span>
+          </div>
+          ${t.cgstAmount > 0 ? `
+            <div class="row" style="font-size:0.84rem;margin:0.15rem 0">
+              <span>${cgstLbl}</span>
+              <span>${moneyExact(t.cgstAmount)}</span>
+            </div>
+          ` : ''}
+          ${t.sgstAmount > 0 ? `
+            <div class="row" style="font-size:0.84rem;margin:0.15rem 0">
+              <span>${sgstLbl}</span>
+              <span>${moneyExact(t.sgstAmount)}</span>
+            </div>
+          ` : ''}
+          ${t.igstAmount > 0 ? `
+            <div class="row" style="font-size:0.84rem;margin:0.15rem 0">
+              <span>${igstLbl}</span>
+              <span>${moneyExact(t.igstAmount)}</span>
+            </div>
+          ` : ''}
+          ${t.totalGst <= 0 ? `
+            <div class="row" style="font-size:0.84rem;margin:0.15rem 0">
+              <span>GST</span>
+              <span>Exempt (₹0)</span>
+            </div>
+          ` : ''}
+          <div style="font-size:0.74rem;color:var(--muted);margin-top:0.25rem;display:flex;justify-content:space-between">
+            <span>Place of Supply: ${esc(t.placeOfSupply || ACTIVE_GST_CONFIG.sellerState || 'Gujarat')}</span>
+            <span>${isInclusive ? 'GST included in price' : 'GST added to subtotal'}</span>
+          </div>
         </div>
       ` : ''}
       <div class="row">
         <span>Express Insured Shipping</span>
-        <span>${t.ship ? money(t.ship) : '<span style="color:var(--success);font-weight:600">Complimentary</span>'}</span>
+        <span>${t.ship ? moneyExact(t.ship) : '<span style="color:var(--success);font-weight:600">Complimentary</span>'}</span>
       </div>
       <div class="row total">
-        <span>Order Total</span>
-        <span>${money(t.total)}</span>
+        <span>Final Payable Amount</span>
+        <span>${moneyExact(t.total)}</span>
       </div>`;
   }
 
@@ -1570,9 +1608,14 @@
     const imgSrc = p.image || (p.images && p.images[0]) || 'images/p1_front.jpg';
     const images = (p.images && p.images.length) ? p.images : [imgSrc];
     const secondaryImg = images.length > 1 ? images[1] : null;
-    const price = Number(p.price) || 0;
-    const oldPrice = p.old || p.oldPrice || p.old_price;
-    const discount = oldPrice ? Math.round(((Number(oldPrice) - price) / Number(oldPrice)) * 100) : null;
+    const pr = getProductDisplayPricing(p);
+    const displayPrice = pr.effectivePrice;
+    const strikePrice = pr.hasActiveDiscount ? pr.originalPrice : pr.legacyOldPrice;
+    const discountBadgeText = pr.hasActiveDiscount
+      ? (pr.discountType === 'fixed'
+        ? `Save ${moneyExact(pr.savings)}`
+        : `${pr.discountPercent}% OFF · Save ${moneyExact(pr.savings)}`)
+      : (pr.discountPercent ? `${pr.discountPercent}% OFF` : null);
 
     return `
       <article class="card ${secondaryImg ? 'has-secondary-image' : ''}" data-product-id="${p.id}">
@@ -1581,7 +1624,7 @@
             <img class="card-img-primary" src="${imgSrc}" alt="${esc(p.name)}" loading="lazy">
             ${secondaryImg ? `<img class="card-img-secondary" src="${secondaryImg}" alt="${esc(p.name)} alternate perspective" loading="lazy">` : ''}
           </a>
-          ${p.tag ? `<span class="card-tag ${p.tag.toLowerCase().includes('bridal') ? 'bridal' : ''}">${p.tag}</span>` : ''}
+          ${p.tag ? `<span class="card-tag ${p.tag.toLowerCase().includes('bridal') ? 'bridal' : ''}">${p.tag}</span>` : (pr.hasActiveDiscount ? `<span class="card-tag">${esc(pr.discountName)}</span>` : '')}
           ${images.length > 1 ? `<span class="card-gallery-indicator" title="${images.length} studio photography angles">📸 ${images.length} Angles</span>` : ''}
           <button class="heart-btn ${on ? 'on' : ''}" data-wish="${p.id}" aria-pressed="${on}" aria-label="Save ${esc(p.name)}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
@@ -1600,9 +1643,9 @@
           <h3 class="card-title"><a href="${href}">${esc(p.name)}</a></h3>
           
           <div class="card-price-row">
-            <span class="card-price">${money(price)}</span>
-            ${oldPrice ? `<span class="card-old-price">${money(oldPrice)}</span>` : ''}
-            ${discount ? `<span class="card-discount">${discount}% OFF</span>` : ''}
+            <span class="card-price">${moneyExact(displayPrice)}</span>
+            ${strikePrice ? `<span class="card-old-price">${moneyExact(strikePrice)}</span>` : ''}
+            ${discountBadgeText ? `<span class="card-discount">${discountBadgeText}</span>` : ''}
           </div>
         </div>
       </article>`;
@@ -1617,8 +1660,8 @@
       const hist = JSON.parse(localStorage.getItem('ss_browsing_history') || '[]');
       const filtered = [pId, ...hist.filter(x => x !== pId)].slice(0, 30);
       localStorage.setItem('ss_browsing_history', JSON.stringify(filtered));
-      fetch(`/api/products/${pId}/view`, { method: 'POST' }).catch(() => {});
-    } catch {}
+      fetch(`/api/products/${pId}/view`, { method: 'POST' }).catch(() => { });
+    } catch { }
   }
   window.recordBrowsingHistory = recordBrowsingHistory;
 
@@ -1634,7 +1677,7 @@
           if (idx >= 0) PRODUCTS[idx] = p;
           else PRODUCTS.push(p);
         }
-      } catch {}
+      } catch { }
     }
     if (!p) return;
     window._qvProductId = p.id;
@@ -1644,22 +1687,23 @@
 
     const modal = $('#quick-view-modal');
     if (!modal) return;
-    const isWishlistContext = document.body.dataset.page === 'wishlist' || 
-      window.location.pathname.includes('wishlist') || 
+    const isWishlistContext = document.body.dataset.page === 'wishlist' ||
+      window.location.pathname.includes('wishlist') ||
       Boolean(document.querySelector('.account-tab-btn[data-tab="wishlist"]')?.classList.contains('active'));
     const on = db.isWishlisted(p.id);
-    const sizes = p.sizes || ['XS', 'S', 'M', 'L', 'XL'];
-    const colors = p.colors || [{ name: 'Primary Shade', hex: p.c1 || '#5B1835' }];
-    let selectedSize = sizes[0] || 'M';
-    let selectedColor = colors[0]?.name || 'Selected Shade';
-    const advice = getConciergeAdviceForProduct(p);
+    const { sizes, colors, variants } = getProductVariantMeta(p);
+    const initialChoice = getFirstAvailableVariant(p);
+    let selectedSize = initialChoice.size;
+    let selectedColor = initialChoice.color;
+    const advice = null;
+    const initialVarStock = getVariantStockFor(p, selectedSize, selectedColor);
 
     modal.innerHTML = `
       <div class="modal-content">
         <button class="modal-close" id="modal-close-btn" aria-label="Close modal">✕</button>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;padding:2.5rem">
+        <div class="qv-modal-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;padding:2.5rem">
           <div class="pdp-main-image zoom-lens-container" style="aspect-ratio:4/5">
-            <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}">
+            <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" loading="lazy" decoding="async">
           </div>
           <div>
             <p class="pdp-category-breadcrumb">${p.cat === 'ethnic' ? 'Ethnic Couture' : 'Western Couture'} / ${esc(p.type)}</p>
@@ -1668,13 +1712,20 @@
               <span class="card-rating">★ ${p.rating || '4.9'} / 5</span>
               <span class="muted">(${p.reviews || 48} verified reviews)</span>
               <span>·</span>
-              <span style="color:${(p.stock || 0) > 0 ? 'var(--success)' : '#dc2626'};font-weight:600">
-                ${(p.stock || 0) > 0 ? `In Stock (${p.stock} units)` : 'Sold Out'}
+              <span id="qv-stock-status" style="color:${initialVarStock > 0 ? 'var(--success)' : '#dc2626'};font-weight:600">
+                ${initialVarStock > 0 ? `In Stock (${initialVarStock} available)` : 'Out of Stock'}
               </span>
             </div>
             <div class="pdp-price-wrap" style="margin-bottom:1rem;padding-bottom:0.8rem">
-              <span class="pdp-price">${money(p.price)}</span>
-              ${p.old ? `<span class="pdp-old-price">${money(p.old)}</span>` : ''}
+              ${(() => {
+                const pr = getProductDisplayPricing(p);
+                const strike = pr.hasActiveDiscount ? pr.originalPrice : pr.legacyOldPrice;
+                return `
+                  <span class="pdp-price">${moneyExact(pr.effectivePrice)}</span>
+                  ${strike ? `<span class="pdp-old-price">${moneyExact(strike)}</span>` : ''}
+                  ${pr.hasActiveDiscount ? `<span class="card-discount">Save ${moneyExact(pr.savings)} (${pr.discountPercent}% OFF)</span>` : ''}
+                `;
+              })()}
             </div>
             
             <p style="font-size:0.95rem;color:var(--esp-light);margin-bottom:1.2rem">${esc(p.desc)}</p>
@@ -1692,11 +1743,14 @@
               <strong>Select Colour</strong>
             </div>
             <div class="color-swatches" id="qv-colors">
-              ${colors.map((c, i) => `
-                <button class="color-swatch-btn ${i === 0 ? 'active' : ''}" data-qv-color="${esc(c.name)}">
-                  <span class="color-dot" style="background:${c.hex}"></span> ${esc(c.name)}
-                </button>
-              `).join('')}
+              ${colors.map(c => {
+                const colAvail = isColorInStock(p, c.name);
+                return `
+                  <button class="color-swatch-btn ${c.name === selectedColor ? 'active' : ''} ${!colAvail ? 'variant-unavailable' : ''}" data-qv-color="${esc(c.name)}">
+                    <span class="color-dot" style="background:${c.hex}"></span> ${esc(c.name)}${!colAvail ? '<span class="swatch-oos-tag">(Out)</span>' : ''}
+                  </button>
+                `;
+              }).join('')}
             </div>
             
             <div class="size-header">
@@ -1704,12 +1758,22 @@
               <button class="btn-size-guide" onclick="openFitFinder()">Size Guide</button>
             </div>
             <div class="sizes" id="qv-sizes" style="margin-bottom:1.2rem">
-              ${sizes.map(s => `<button data-qv-size="${s}" aria-pressed="${s === selectedSize}">${s}</button>`).join('')}
+              ${sizes.map(s => {
+                const sStock = getVariantStockFor(p, s, selectedColor);
+                return `<button data-qv-size="${esc(s)}" aria-pressed="${s === selectedSize}" class="${sStock <= 0 ? 'variant-unavailable' : ''}" title="${sStock > 0 ? `${sStock} available` : 'Out of stock'}">${esc(s)}</button>`;
+              }).join('')}
+            </div>
+            <div id="qv-variant-note" class="pdp-variant-stock-note ${initialVarStock <= 0 ? 'out-of-stock' : (initialVarStock <= 3 ? 'low-stock' : 'in-stock')}" style="margin-top:-0.5rem">
+              ${initialVarStock <= 0
+                ? `Out of stock for ${esc(selectedSize)} · ${esc(selectedColor)}`
+                : (initialVarStock <= 3
+                  ? `Only ${initialVarStock} left in ${esc(selectedSize)} · ${esc(selectedColor)}`
+                  : `${initialVarStock} units available in ${esc(selectedSize)} · ${esc(selectedColor)}`)}
             </div>
 
             <div class="buy-row">
-              <button class="btn gold" id="qv-add-cart" style="${isWishlistContext ? 'width:100%;padding:0.95rem;font-size:0.95rem;font-weight:600' : ''}" ${(p.stock || 0) <= 0 ? 'disabled' : ''}>
-                ${(p.stock || 0) > 0 ? 'Add to Shopping Bag' : 'Sold Out'}
+              <button class="btn gold" id="qv-add-cart" style="${isWishlistContext ? 'width:100%;padding:0.95rem;font-size:0.95rem;font-weight:600' : ''}" ${initialVarStock <= 0 ? 'disabled' : ''}>
+                ${initialVarStock > 0 ? 'Add to Shopping Bag' : 'Variant Out of Stock'}
               </button>
               ${!isWishlistContext ? `
                 <button class="btn ghost sm" id="qv-wish" aria-pressed="${on}">${on ? 'Saved to Wishlist' : 'Save to Wishlist'}</button>
@@ -1725,6 +1789,36 @@
 
     modal.style.display = 'grid';
 
+    const syncQuickViewVariantState = () => {
+      const stock = getVariantStockFor(p, selectedSize, selectedColor);
+      $$('[data-qv-size]').forEach(btn => {
+        const s = btn.dataset.qvSize;
+        const sStock = getVariantStockFor(p, s, selectedColor);
+        btn.classList.toggle('variant-unavailable', sStock <= 0);
+        btn.setAttribute('aria-pressed', s === selectedSize ? 'true' : 'false');
+        btn.title = sStock > 0 ? `${sStock} available` : `Out of stock in ${selectedColor}`;
+      });
+      const statusEl = $('#qv-stock-status');
+      if (statusEl) {
+        statusEl.style.color = stock > 0 ? 'var(--success)' : '#dc2626';
+        statusEl.textContent = stock > 0 ? `In Stock (${stock} available)` : 'Out of Stock';
+      }
+      const noteEl = $('#qv-variant-note');
+      if (noteEl) {
+        noteEl.className = `pdp-variant-stock-note ${stock <= 0 ? 'out-of-stock' : (stock <= 3 ? 'low-stock' : 'in-stock')}`;
+        noteEl.textContent = stock <= 0
+          ? `Out of stock for ${selectedSize} · ${selectedColor}`
+          : (stock <= 3
+            ? `Only ${stock} left in ${selectedSize} · ${selectedColor}`
+            : `${stock} units available in ${selectedSize} · ${selectedColor}`);
+      }
+      const addBtn = $('#qv-add-cart');
+      if (addBtn) {
+        addBtn.disabled = stock <= 0;
+        addBtn.textContent = stock > 0 ? 'Add to Shopping Bag' : 'Variant Out of Stock';
+      }
+    };
+
     $('#modal-close-btn').onclick = () => { modal.style.display = 'none'; };
     modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
 
@@ -1732,20 +1826,28 @@
       b.onclick = () => {
         selectedColor = b.dataset.qvColor;
         $$('[data-qv-color]').forEach(x => x.classList.toggle('active', x === b));
+        syncQuickViewVariantState();
       };
     });
 
     $$('[data-qv-size]').forEach(b => {
       b.onclick = () => {
         selectedSize = b.dataset.qvSize;
-        $$('[data-qv-size]').forEach(x => x.setAttribute('aria-pressed', x === b));
+        syncQuickViewVariantState();
       };
     });
 
     $('#qv-add-cart').onclick = () => {
-      addToCart(p.id, selectedSize, 1, selectedColor);
-      toast(`${p.name} (${selectedSize} · ${selectedColor}) added to bag`, 'cart.html', 'View Bag');
-      modal.style.display = 'none';
+      const stock = getVariantStockFor(p, selectedSize, selectedColor);
+      if (stock <= 0) {
+        toast(`Selected variant (${selectedSize} · ${selectedColor}) is out of stock.`);
+        return;
+      }
+      const added = addToCart(p.id, selectedSize, 1, selectedColor);
+      if (added) {
+        toast(`${p.name} (${selectedSize} · ${selectedColor}) added to bag`, 'cart.html', 'View Bag');
+        modal.style.display = 'none';
+      }
     };
 
     if ($('#qv-wish')) {
@@ -1754,9 +1856,6 @@
         if (v === null) return;
         e.target.textContent = v ? 'Saved to Wishlist' : 'Save to Wishlist';
         e.target.setAttribute('aria-pressed', v);
-        if (v) {
-          sendCustomerWishlistNotification(p);
-        }
       };
     }
   }
@@ -1835,7 +1934,7 @@
   }
   window.openFitFinder = openFitFinder;
 
-      
+
 
 
 
@@ -1871,6 +1970,363 @@
       return;
     }
   });
+
+  /* ---------- Customer Returns & Refunds Portal (Shared by returns.html & Patron Account Tab) ---------- */
+  async function renderCustomerReturnsPortal(container, preselectOrderId = '') {
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;padding:3rem 1rem"><p class="muted">Loading your eligible orders &amp; return history...</p></div>';
+
+    try {
+      const [eligRes, myRes] = await Promise.all([
+        fetchAuth('/api/returns/eligible'),
+        fetchAuth('/api/returns/my')
+      ]);
+
+      if (eligRes.status === 401 || myRes.status === 401 || eligRes.status === 403 || myRes.status === 403) {
+        container.innerHTML = `
+          <div class="empty" style="text-align:center;padding:4rem 1rem">
+            <span class="hero-pill" style="margin-bottom:0.8rem">Atelier Authentication Required</span>
+            <h2 style="margin:0.8rem 0 0.5rem">Returns &amp; Exchanges</h2>
+            <p class="muted" style="margin:0.5rem 0 1.8rem;max-width:480px;margin-inline:auto">
+              Please sign in to your patron account to initiate a return or track your existing return requests.
+            </p>
+            <button class="btn gold" id="returns-auth-btn" style="cursor:pointer">Sign In to Continue</button>
+          </div>`;
+        const authBtn = container.querySelector('#returns-auth-btn');
+        if (authBtn) {
+          authBtn.onclick = () => {
+            openAuthModal({
+              actionTitle: 'Access Returns & Refunds',
+              message: 'Sign in to view your delivered creations and submit or track return requests.',
+              onAuthenticated: () => renderCustomerReturnsPortal(container, preselectOrderId)
+            });
+          };
+        }
+        return;
+      }
+
+      const eligData = eligRes.ok ? await eligRes.json() : { orders: [], reasons: [] };
+      const myData = myRes.ok ? await myRes.json() : { returns: [], summary: {} };
+
+      const deliveredOrders = Array.isArray(eligData.orders) ? eligData.orders : [];
+      const reasons = (Array.isArray(eligData.reasons) && eligData.reasons.length)
+        ? eligData.reasons
+        : [
+          'Size or Fit Issue',
+          'Colour or Design Mismatch',
+          'Damaged or Defective Garment',
+          'Fabric Quality Not as Expected',
+          'Received Wrong Item',
+          'Occasion Cancelled / Changed Mind',
+          'Other'
+        ];
+      const myReturns = Array.isArray(myData.returns) ? myData.returns : [];
+      const summary = myData.summary || {
+        total: myReturns.length,
+        pending: myReturns.filter(r => r.status === 'Pending').length,
+        approved: myReturns.filter(r => r.status === 'Approved').length,
+        processing: myReturns.filter(r => r.status === 'Processing').length,
+        completed: myReturns.filter(r => r.status === 'Completed').length,
+        rejected: myReturns.filter(r => r.status === 'Rejected').length
+      };
+
+      const eligibleItems = [];
+      deliveredOrders.forEach(ord => {
+        (ord.items || []).forEach(it => {
+          if (it.eligible) {
+            eligibleItems.push({ ...it, orderId: ord.orderId, orderDate: ord.orderDate, paymentMethod: ord.paymentMethod });
+          }
+        });
+      });
+
+      let selectedItemKey = '';
+      if (preselectOrderId) {
+        const pre = eligibleItems.find(it => String(it.orderId) === String(preselectOrderId));
+        if (pre) selectedItemKey = `${pre.orderId}::${pre.orderItemId}`;
+      }
+      if (!selectedItemKey && eligibleItems.length) {
+        selectedItemKey = `${eligibleItems[0].orderId}::${eligibleItems[0].orderItemId}`;
+      }
+
+      let historyFilter = 'all';
+
+      const statusBadgeHtml = (st) => {
+        const cls = String(st || 'Pending').toLowerCase();
+        return `<span class="return-status-pill ${cls}">${esc(st || 'Pending')}</span>`;
+      };
+
+      const renderPortal = () => {
+        const activeItem = eligibleItems.find(it => `${it.orderId}::${it.orderItemId}` === selectedItemKey) || null;
+        const filteredReturns = historyFilter === 'all'
+          ? myReturns
+          : myReturns.filter(r => String(r.status || '').toLowerCase() === historyFilter);
+
+        container.innerHTML = `
+          <!-- Return Summary Strip -->
+          <div class="return-summary-strip">
+            <div class="return-summary-tile">
+              <span>Total Requests</span>
+              <strong>${summary.total || 0}</strong>
+            </div>
+            <div class="return-summary-tile">
+              <span>Pending Review</span>
+              <strong style="color:#B45309">${summary.pending || 0}</strong>
+            </div>
+            <div class="return-summary-tile">
+              <span>Approved / Processing</span>
+              <strong style="color:#1E40AF">${(summary.approved || 0) + (summary.processing || 0)}</strong>
+            </div>
+            <div class="return-summary-tile">
+              <span>Completed</span>
+              <strong style="color:#166534">${summary.completed || 0}</strong>
+            </div>
+          </div>
+
+          <!-- Section 1: Initiate a New Return Request -->
+          <div class="account-card" style="margin-bottom:2rem">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.8rem;border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:1.2rem">
+              <div>
+                <span class="hero-pill" style="font-size:0.7rem;padding:0.15rem 0.6rem;margin-bottom:0.35rem;display:inline-block">7-Day Atelier Return Privilege</span>
+                <h2 style="font-size:1.45rem;margin:0;color:var(--wine)">Request a Product Return</h2>
+                <p class="muted" style="font-size:0.88rem;margin:0.25rem 0 0">Select an eligible delivered garment below to initiate reverse pickup and refund resolution.</p>
+              </div>
+              <a href="login.html?tab=orders" class="btn ghost sm">View All Orders</a>
+            </div>
+
+            ${eligibleItems.length ? `
+              <div style="display:grid;gap:0.75rem;margin-bottom:1.4rem">
+                ${eligibleItems.map(it => {
+                  const key = `${it.orderId}::${it.orderItemId}`;
+                  const isSel = key === selectedItemKey;
+                  return `
+                    <div class="return-eligible-item ${isSel ? 'selected' : ''}">
+                      <div style="display:flex;align-items:center;gap:0.9rem;flex:1;min-width:220px">
+                        <img src="${it.image || 'images/p1.jpg'}" alt="${esc(it.productName)}" style="width:52px;height:68px;object-fit:cover;border-radius:4px;border:1px solid var(--line)">
+                        <div>
+                          <div style="font-size:0.76rem;color:var(--muted);margin-bottom:2px">
+                            Order <strong>#${esc(it.orderId)}</strong> · Delivered (${new Date(it.orderDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })})
+                          </div>
+                          <strong style="font-size:1rem;color:var(--esp)">${esc(it.productName)}</strong>
+                          <div style="font-size:0.84rem;color:var(--esp-light);margin-top:2px">
+                            Size: <strong>${esc(it.size)}</strong> · Shade: <strong>${esc(it.color)}</strong> · Eligible Qty: <strong>${it.remainingReturnableQty}</strong> of ${it.purchasedQty} · ${money(it.unitPrice)}
+                          </div>
+                        </div>
+                      </div>
+                      <button type="button" class="btn sm ${isSel ? 'gold' : 'ghost'} select-return-item-btn" data-item-key="${esc(key)}" style="cursor:pointer">
+                        ${isSel ? '✓ Selected' : 'Select for Return'}
+                      </button>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+
+              ${activeItem ? `
+                <form id="customer-return-request-form" class="responsive-two-col-form" style="background:var(--ivory-soft);border:1px solid var(--line-strong);border-radius:var(--radius);padding:1.3rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                  <div style="grid-column:1/-1;padding-bottom:0.6rem;border-bottom:1px solid var(--line)">
+                    <strong style="color:var(--wine);font-size:0.95rem">Return Details for "${esc(activeItem.productName)}" (Order #${esc(activeItem.orderId)})</strong>
+                    <div class="muted" style="font-size:0.82rem;margin-top:2px">Variant: Size ${esc(activeItem.size)} · Colour ${esc(activeItem.color)}</div>
+                  </div>
+
+                  <div>
+                    <label style="font-size:0.84rem;font-weight:600;display:block;margin-bottom:0.35rem">Return Reason <span style="color:#DC2626">*</span></label>
+                    <select name="reason" id="ret-reason-select" required style="width:100%;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:0.65rem;font-size:0.9rem">
+                      <option value="">Select reason for return...</option>
+                      ${reasons.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('')}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style="font-size:0.84rem;font-weight:600;display:block;margin-bottom:0.35rem">Quantity to Return <span style="color:#DC2626">*</span></label>
+                    <select name="quantity" id="ret-qty-select" required style="width:100%;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:0.65rem;font-size:0.9rem">
+                      ${Array.from({ length: activeItem.remainingReturnableQty }, (_, idx) => {
+                        const q = idx + 1;
+                        return `<option value="${q}">${q} unit${q > 1 ? 's' : ''} (Estimated Refund: ${money(activeItem.unitPrice * q)})</option>`;
+                      }).join('')}
+                    </select>
+                  </div>
+
+                  <div style="grid-column:1/-1">
+                    <label style="font-size:0.84rem;font-weight:600;display:block;margin-bottom:0.35rem">Additional Comments <span class="muted" style="font-weight:400">(Optional)</span></label>
+                    <textarea name="comments" id="ret-comments-input" rows="3" maxlength="1000" placeholder="Share fit feedback, packaging details, or preferred pickup window..." style="width:100%;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:0.65rem;font-size:0.9rem;resize:vertical"></textarea>
+                  </div>
+
+                  <div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.8rem">
+                    <span class="muted" style="font-size:0.82rem">Original tags and atelier packaging should remain intact for reverse pickup.</span>
+                    <button type="submit" id="ret-submit-btn" class="btn gold" style="cursor:pointer">Submit Return Request</button>
+                  </div>
+                </form>
+              ` : ''}
+            ` : `
+              <div style="text-align:center;padding:2rem 1rem;background:var(--ivory-soft);border-radius:var(--radius-sm)">
+                <p style="font-weight:600;color:var(--esp);margin:0 0 0.4rem">No Delivered Products Currently Eligible for Return</p>
+                <p class="muted" style="font-size:0.88rem;max-width:520px;margin:0 auto 1.2rem">
+                  Returns can be requested once an order has been marked <strong>Delivered</strong> and has remaining unreturned items.
+                </p>
+                <div style="display:flex;gap:0.8rem;justify-content:center;flex-wrap:wrap">
+                  <a href="login.html?tab=orders" class="btn ghost sm">Check Order Status</a>
+                  <a href="shop.html" class="btn gold sm">Explore Creations</a>
+                </div>
+              </div>
+            `}
+          </div>
+
+          <!-- Section 2: Customer Return History & Synchronized Status Tracking -->
+          <div class="account-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.8rem;border-bottom:1px solid var(--line);padding-bottom:1rem;margin-bottom:1.2rem">
+              <div>
+                <h2 style="font-size:1.45rem;margin:0;color:var(--wine)">Return History &amp; Live Status (${myReturns.length})</h2>
+                <p class="muted" style="font-size:0.86rem;margin:0.2rem 0 0">Synchronized in real time with SATINOSTITCH Atelier Administration.</p>
+              </div>
+              <button type="button" class="btn ghost sm" id="refresh-my-returns-btn" style="cursor:pointer">↻ Refresh Status</button>
+            </div>
+
+            <div class="return-filter-row">
+              <button type="button" class="return-filter-pill ${historyFilter === 'all' ? 'active' : ''}" data-ret-filter="all">All (${myReturns.length})</button>
+              <button type="button" class="return-filter-pill ${historyFilter === 'pending' ? 'active' : ''}" data-ret-filter="pending">Pending (${summary.pending || 0})</button>
+              <button type="button" class="return-filter-pill ${historyFilter === 'approved' ? 'active' : ''}" data-ret-filter="approved">Approved (${summary.approved || 0})</button>
+              <button type="button" class="return-filter-pill ${historyFilter === 'processing' ? 'active' : ''}" data-ret-filter="processing">Processing (${summary.processing || 0})</button>
+              <button type="button" class="return-filter-pill ${historyFilter === 'completed' ? 'active' : ''}" data-ret-filter="completed">Completed (${summary.completed || 0})</button>
+              <button type="button" class="return-filter-pill ${historyFilter === 'rejected' ? 'active' : ''}" data-ret-filter="rejected">Rejected (${summary.rejected || 0})</button>
+            </div>
+
+            ${filteredReturns.length ? filteredReturns.map(r => {
+              const steps = ['Pending', 'Approved', 'Processing', 'Completed'];
+              const stepIdx = steps.indexOf(r.status);
+              const isRejected = r.status === 'Rejected';
+              return `
+                <div style="border:1px solid var(--line);border-radius:var(--radius);padding:1.2rem;margin-bottom:1rem;background:#fff">
+                  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.6rem;padding-bottom:0.8rem;border-bottom:1px solid var(--line);margin-bottom:1rem">
+                    <div>
+                      <strong style="color:var(--wine);font-size:1.05rem">${esc(r.returnCode)}</strong>
+                      <span class="muted" style="margin-left:0.6rem;font-size:0.84rem">Order #${esc(r.orderId)} · Requested ${new Date(r.requestedAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.75rem">
+                      ${statusBadgeHtml(r.status)}
+                      <strong style="color:var(--wine)">${money(r.refundAmount)}</strong>
+                    </div>
+                  </div>
+
+                  ${!isRejected ? `
+                    <div class="tracking-stepper" style="margin:0.8rem 0 1.2rem">
+                      ${steps.map((s, idx) => {
+                        const done = stepIdx >= idx;
+                        const curr = stepIdx === idx;
+                        return `
+                          <div class="tracking-step ${done ? 'done' : ''} ${curr ? 'current' : ''}">
+                            <div class="tracking-dot">${done ? '✓' : idx + 1}</div>
+                            <div class="tracking-label">${s === 'Pending' ? 'Requested' : s}</div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : `
+                    <div class="return-rejected-box">
+                      <strong>Return Request Rejected</strong>
+                      ${r.adminNotes ? `<div style="margin-top:0.25rem">${esc(r.adminNotes)}</div>` : ' — Please contact our atelier concierge for further assistance.'}
+                    </div>
+                  `}
+
+                  <div style="display:flex;align-items:center;gap:1rem;background:var(--ivory-soft);padding:0.85rem;border-radius:var(--radius-sm);flex-wrap:wrap">
+                    <img src="${r.productImage || 'images/p1.jpg'}" alt="${esc(r.productName)}" style="width:50px;height:66px;object-fit:cover;border-radius:4px">
+                    <div style="flex:1;min-width:200px">
+                      ${r.productId
+                        ? `<a href="product.html?id=${r.productId}" style="font-weight:600;color:var(--esp);text-decoration:underline">${esc(r.productName)}</a>`
+                        : `<strong>${esc(r.productName)}</strong>`}
+                      <p class="muted" style="font-size:0.84rem;margin:0.2rem 0 0">
+                        Size: <strong>${esc(r.size)}</strong> · Shade: <strong>${esc(r.color)}</strong> · Qty: <strong>${r.quantity}</strong>
+                      </p>
+                      <p style="font-size:0.84rem;color:var(--esp-light);margin:0.35rem 0 0">
+                        <strong>Reason:</strong> ${esc(r.reason)}${r.comments ? ` — <em>"${esc(r.comments)}"</em>` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  ${r.adminNotes && !isRejected ? `
+                    <div class="return-admin-note-box">
+                      <strong>Atelier Concierge Note:</strong> ${esc(r.adminNotes)}
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }).join('') : `
+              <div style="text-align:center;padding:2.5rem 1rem">
+                <p class="muted" style="margin:0">No ${historyFilter === 'all' ? '' : historyFilter + ' '}return requests found.</p>
+              </div>
+            `}
+          </div>
+        `;
+
+        container.querySelectorAll('.select-return-item-btn').forEach(btn => {
+          btn.onclick = () => {
+            selectedItemKey = btn.dataset.itemKey;
+            renderPortal();
+          };
+        });
+
+        container.querySelectorAll('[data-ret-filter]').forEach(btn => {
+          btn.onclick = () => {
+            historyFilter = btn.dataset.retFilter;
+            renderPortal();
+          };
+        });
+
+        const refreshBtn = container.querySelector('#refresh-my-returns-btn');
+        if (refreshBtn) {
+          refreshBtn.onclick = () => renderCustomerReturnsPortal(container, preselectOrderId);
+        }
+
+        const form = container.querySelector('#customer-return-request-form');
+        if (form && activeItem) {
+          form.onsubmit = async (e) => {
+            e.preventDefault();
+            const submitBtn = container.querySelector('#ret-submit-btn');
+            const reason = container.querySelector('#ret-reason-select')?.value?.trim();
+            const quantity = Number(container.querySelector('#ret-qty-select')?.value || 1);
+            const comments = container.querySelector('#ret-comments-input')?.value?.trim() || '';
+
+            if (!reason) {
+              toast('Please select a return reason.');
+              return;
+            }
+
+            try {
+              if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Submitting Request...';
+              }
+              const res = await fetchAuth('/api/returns', {
+                method: 'POST',
+                body: {
+                  orderId: activeItem.orderId,
+                  orderItemId: activeItem.orderItemId,
+                  productId: activeItem.productId,
+                  quantity,
+                  reason,
+                  comments
+                }
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'Could not submit return request.');
+
+              toast(data.message || 'Return request submitted successfully!');
+              await renderCustomerReturnsPortal(container, '');
+            } catch (err) {
+              toast(err.message || 'Failed to submit return request.');
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Return Request';
+              }
+            }
+          };
+        }
+      };
+
+      renderPortal();
+    } catch (err) {
+      console.error('[Customer Returns Portal Error]:', err);
+      container.innerHTML = '<div class="account-card" style="text-align:center;padding:3rem 1rem"><p class="muted">Could not load return management data. Please refresh and try again.</p></div>';
+    }
+  }
 
   /* ==========================================================================
      Pages Definitions (Modules 1 - 5)
@@ -2183,12 +2639,12 @@
                 <h4>✦ Signature Color Harmony</h4>
                 <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem" id="pref-colors-grid">
                   ${[
-                    { name: 'Wine Burgundy', hex: '#5B1835' },
-                    { name: 'Champagne Gold', hex: '#D4AF37' },
-                    { name: 'Royal Emerald', hex: '#1B3B2B' },
-                    { name: 'Regal Navy', hex: '#1E293B' },
-                    { name: 'Ivory Cream', hex: '#FDFBF7' }
-                  ].map(c => `
+              { name: 'Wine Burgundy', hex: '#5B1835' },
+              { name: 'Champagne Gold', hex: '#D4AF37' },
+              { name: 'Royal Emerald', hex: '#1B3B2B' },
+              { name: 'Regal Navy', hex: '#1E293B' },
+              { name: 'Ivory Cream', hex: '#FDFBF7' }
+            ].map(c => `
                     <button class="ai-color-chip ${currentPrefs.preferred_colors?.includes(c.hex) ? 'active' : ''}" data-hex="${c.hex}" title="${c.name}" style="background:${c.hex}"></button>
                   `).join('')}
                 </div>
@@ -2247,7 +2703,7 @@
               fetchAuth('/api/recommendations/preferences', {
                 method: 'PUT',
                 body: newPrefs
-              }).catch(() => {});
+              }).catch(() => { });
             }
 
             closeModal();
@@ -2331,10 +2787,10 @@
         typeContainer.innerHTML = `
           <button type="button" data-type="all" class="chip-btn ${f.type === 'all' ? 'active' : ''}">All (${PRODUCTS.length})</button>
           ${allSilhouettes.map(t => {
-            const count = PRODUCTS.filter(p => p.type.toLowerCase() === t.toLowerCase()).length;
-            if (!count) return '';
-            return `<button type="button" data-type="${esc(t)}" class="chip-btn ${f.type.toLowerCase() === t.toLowerCase() ? 'active' : ''}">${esc(t)} (${count})</button>`;
-          }).join('')}
+          const count = PRODUCTS.filter(p => p.type.toLowerCase() === t.toLowerCase()).length;
+          if (!count) return '';
+          return `<button type="button" data-type="${esc(t)}" class="chip-btn ${f.type.toLowerCase() === t.toLowerCase() ? 'active' : ''}">${esc(t)} (${count})</button>`;
+        }).join('')}
         `;
       }
 
@@ -2717,7 +3173,7 @@
           if (idx >= 0) PRODUCTS[idx] = p;
           else PRODUCTS.push(p);
         }
-      } catch {}
+      } catch { }
 
       if (!p) {
         root.innerHTML = '<div class="empty wrap" style="text-align:center;padding:5rem 1rem"><h2>Creation Not Found</h2><p class="muted" style="margin:1rem 0 2rem">The requested piece is no longer available in our active catalogue.</p><a class="btn" href="shop.html">Return to Shop</a></div>';
@@ -2725,17 +3181,15 @@
       }
 
       document.title = `${p.name} — SATINOSTITCH Haute Couture`;
-      const sizes = p.sizes || ['XS', 'S', 'M', 'L', 'XL'];
-      const colors = p.colors || [
-        { name: 'Primary Shade', hex: p.c1 || '#5B1835' },
-        { name: 'Accent Shade', hex: p.c2 || '#C6A15B' }
-      ];
+      const { sizes, colors } = getProductVariantMeta(p);
       const images = (p.images && p.images.length) ? p.images : [p.image];
       let selectedImage = images[0];
-      let size = sizes[0] || 'M';
-      let color = colors[0]?.name || 'Selected Shade';
+      const firstAvail = getFirstAvailableVariant(p);
+      let size = firstAvail.size;
+      let color = firstAvail.color;
       let qty = 1;
       const on = () => db.isWishlisted(p.id);
+      const initialVariantStock = getVariantStockFor(p, size, color);
 
       root.innerHTML = `
         <div class="wrap pdp">
@@ -2769,8 +3223,8 @@
               ${images.length > 1 ? `
                 <div class="pdp-angle-thumbnails" role="tablist" aria-label="Product photography angles">
                   ${images.map((img, i) => {
-                    const meta = getAngleMeta(img, i, images.length);
-                    return `
+        const meta = getAngleMeta(img, i, images.length);
+        return `
                       <button class="pdp-angle-thumb-btn ${i === 0 ? 'active' : ''}" 
                               data-thumb="${img}" 
                               data-index="${i}"
@@ -2784,7 +3238,7 @@
                         <span class="pdp-thumb-caption">${meta.short}</span>
                       </button>
                     `;
-                  }).join('')}
+      }).join('')}
                 </div>
               ` : ''}
             </div>
@@ -2798,42 +3252,72 @@
               <span class="card-rating">★ ${p.rating || '4.9'} / 5</span>
               <span class="muted">(${p.reviews || 64} Verified Patron Reviews)</span>
               <span>·</span>
-              <span style="color:${(p.stock || 0) > 0 ? 'var(--success)' : '#dc2626'};font-weight:600">
-                ${(p.stock || 0) > 0 ? `In Stock & Ready for Tailored Dispatch` : 'Sold Out in Atelier'}
+              <span id="pdp-stock-status-label" style="color:${initialVariantStock > 0 ? 'var(--success)' : '#dc2626'};font-weight:600">
+                ${initialVariantStock > 0 ? `In Stock & Ready for Tailored Dispatch` : 'Selected Variant Unavailable'}
               </span>
             </div>
 
             <div class="pdp-price-wrap">
-              <span class="pdp-price">${money(p.price)}</span>
-              ${p.old ? `<span class="pdp-old-price">${money(p.old)}</span>` : ''}
-              <span class="card-discount">Inclusive of all artisan duties &amp; GST</span>
+              ${(() => {
+                const pr = getProductDisplayPricing(p);
+                const strike = pr.hasActiveDiscount ? pr.originalPrice : pr.legacyOldPrice;
+                const gstInfo = window.SatinoGST
+                  ? window.SatinoGST.describeProductGst({ ...p, price: pr.effectivePrice }, ACTIVE_GST_CONFIG)
+                  : null;
+                const gstText = gstInfo
+                  ? (gstInfo.gstRate > 0 ? `${esc(gstInfo.label)} · Taxable ${moneyExact(gstInfo.taxableAmount)}` : 'GST Exempt (0%)')
+                  : 'Inclusive of all artisan duties &amp; GST';
+                return `
+                  <span class="pdp-price">${moneyExact(pr.effectivePrice)}</span>
+                  ${strike ? `<span class="pdp-old-price">${moneyExact(strike)}</span>` : ''}
+                  ${pr.hasActiveDiscount ? `<span class="card-discount" style="background:rgba(22,101,52,0.12);color:#166534;padding:0.2rem 0.6rem;border-radius:999px;font-weight:700">${esc(pr.discountName)} · Save ${moneyExact(pr.savings)} (${pr.discountPercent}% OFF)</span>` : ''}
+                  <span class="card-discount">${gstText}</span>
+                `;
+              })()}
             </div>
 
-            <div class="pdp-urgency-badge">
-              ${(p.stock || 0) <= 3 && (p.stock || 0) > 0 
-                ? `Limited Edition: Only ${p.stock} units remaining in atelier` 
-                : `Authentic Handcrafted Creation: ${p.stock || 8} units available`}
+            <div class="pdp-urgency-badge" id="pdp-urgency-badge">
+              ${initialVariantStock <= 0
+                ? `Currently Out of Stock for ${esc(size)} · ${esc(color)}`
+                : (initialVariantStock <= 3
+                  ? `Limited Edition: Only ${initialVariantStock} unit${initialVariantStock === 1 ? '' : 's'} remaining for ${esc(size)} · ${esc(color)}`
+                  : `Authentic Handcrafted Creation: ${initialVariantStock} units available (${esc(size)} · ${esc(color)})`)}
             </div>
 
             <p style="font-size:1.05rem;line-height:1.7;color:var(--esp-light);margin-bottom:1.8rem">${esc(p.desc)}</p>
 
             <div class="size-header">
               <strong>Select Colour</strong>
+              <span class="muted" id="pdp-selected-color-label" style="font-size:0.84rem">${esc(color)}</span>
             </div>
             <div class="color-swatches" id="pdp-colors">
-              ${colors.map((c, i) => `
-                <button class="color-swatch-btn ${i === 0 ? 'active' : ''}" data-color="${esc(c.name)}">
-                  <span class="color-dot" style="background:${c.hex}"></span> ${esc(c.name)}
-                </button>
-              `).join('')}
+              ${colors.map(c => {
+                const colAvail = isColorInStock(p, c.name);
+                return `
+                  <button class="color-swatch-btn ${c.name === color ? 'active' : ''} ${!colAvail ? 'variant-unavailable' : ''}" data-color="${esc(c.name)}" type="button">
+                    <span class="color-dot" style="background:${c.hex}"></span> ${esc(c.name)}${!colAvail ? '<span class="swatch-oos-tag">(Out)</span>' : ''}
+                  </button>
+                `;
+              }).join('')}
             </div>
 
             <div class="size-header">
               <strong>Select Size</strong>
               <button class="btn-size-guide" onclick="openFitFinder()">Virtual Size Finder &amp; Drape Guide</button>
             </div>
-            <div class="sizes" role="group" aria-label="Size">
-              ${sizes.map((s, i) => `<button data-size="${s}" aria-pressed="${i === 0}">${s}</button>`).join('')}
+            <div class="sizes" id="pdp-sizes" role="group" aria-label="Size">
+              ${sizes.map(s => {
+                const sStock = getVariantStockFor(p, s, color);
+                return `<button type="button" data-size="${esc(s)}" aria-pressed="${s === size}" class="${sStock <= 0 ? 'variant-unavailable' : ''}" title="${sStock > 0 ? `${sStock} available in ${esc(color)}` : `Out of stock in ${esc(color)}`}">${esc(s)}</button>`;
+              }).join('')}
+            </div>
+
+            <div id="pdp-variant-stock-note" class="pdp-variant-stock-note ${initialVariantStock <= 0 ? 'out-of-stock' : (initialVariantStock <= 3 ? 'low-stock' : 'in-stock')}">
+              ${initialVariantStock <= 0
+                ? `✕ ${esc(size)} · ${esc(color)} is currently out of stock`
+                : (initialVariantStock <= 3
+                  ? `⚡ Only ${initialVariantStock} piece${initialVariantStock === 1 ? '' : 's'} left in ${esc(size)} · ${esc(color)}`
+                  : `✓ ${initialVariantStock} pieces available in ${esc(size)} · ${esc(color)}`)}
             </div>
 
             <div class="buy-row">
@@ -2842,33 +3326,31 @@
                 <span id="qty">1</span>
                 <button id="plus" aria-label="More">+</button>
               </div>
-              <button class="btn gold" id="add" ${(p.stock || 0) <= 0 ? 'disabled' : ''}>
-                ${(p.stock || 0) > 0 ? 'Add to Shopping Bag' : 'Out of Stock'}
+              <button class="btn gold" id="add" ${initialVariantStock <= 0 ? 'disabled' : ''}>
+                ${initialVariantStock > 0 ? 'Add to Shopping Bag' : 'Variant Out of Stock'}
               </button>
               <button class="btn ghost sm" id="wish" aria-pressed="${on()}">${on() ? 'Saved to Wishlist' : 'Save to Wishlist'}</button>
             </div>
 
             <!-- Back in Stock & Artisanal Tailoring Alert (Smart Notification) -->
-            ${(p.stock || 0) <= 3 ? `
-              <div class="pdp-restock-box">
-                <div class="pdp-restock-header">
-                  <div class="pdp-restock-title">
-                    <span>🔔</span> Restock &amp; Artisanal Tailoring Alert
-                  </div>
-                  <span class="pdp-restock-badge">${(p.stock || 0) <= 0 ? 'Currently Sold Out' : `Only ${p.stock} units in atelier`}</span>
+            <div class="pdp-restock-box" id="pdp-restock-box" style="${initialVariantStock <= 3 ? '' : 'display:none'}">
+              <div class="pdp-restock-header">
+                <div class="pdp-restock-title">
+                  <span>🔔</span> Restock &amp; Artisanal Tailoring Alert
                 </div>
-                <p class="pdp-restock-desc">
-                  Want to secure this handcrafted piece in your size? Subscribe for an instant Smart Notification the moment a fresh artisanal wave is cut &amp; finished in the atelier.
-                </p>
-                <div class="pdp-restock-form" id="pdp-restock-form">
-                  <input type="email" class="pdp-restock-input" id="pdp-restock-email" placeholder="Enter patron email address" value="${esc(db.customerUser()?.email || '')}">
-                  <button type="button" class="pdp-restock-submit-btn" id="pdp-restock-btn">Notify Me When In Stock</button>
-                </div>
-                <div class="pdp-restock-success" id="pdp-restock-success" style="display:none">
-                  <span>✓</span> Priority alert confirmed! You will receive an instant smart notification when restocked.
-                </div>
+                <span class="pdp-restock-badge" id="pdp-restock-badge">${initialVariantStock <= 0 ? `Sold Out (${esc(size)} · ${esc(color)})` : `Only ${initialVariantStock} left (${esc(size)} · ${esc(color)})`}</span>
               </div>
-            ` : ''}
+              <p class="pdp-restock-desc">
+                Want to secure this handcrafted piece in your preferred size &amp; colour? Subscribe for an email update the moment a fresh artisanal wave is cut &amp; finished in the atelier.
+              </p>
+              <div class="pdp-restock-form" id="pdp-restock-form">
+                <input type="email" class="pdp-restock-input" id="pdp-restock-email" placeholder="Enter patron email address" value="${esc(db.customerUser()?.email || '')}">
+                <button type="button" class="pdp-restock-submit-btn" id="pdp-restock-btn">Notify Me When In Stock</button>
+              </div>
+              <div class="pdp-restock-success" id="pdp-restock-success" style="display:none">
+                <span>✓</span> Priority alert confirmed! We will email you as soon as this piece is restocked.
+              </div>
+            </div>
 
             <!-- Multi-Angle Studio Inspection Callout -->
             <div class="pdp-artisan-promise">
@@ -3169,31 +3651,134 @@
       };
       loadProductPairings();
 
+      // Sync all variant-driven UI elements when colour or size changes
+      const updatePDPVariantUI = () => {
+        const vStock = getVariantStockFor(p, size, color);
+
+        // Update colour label & active states
+        const colLbl = $('#pdp-selected-color-label');
+        if (colLbl) colLbl.textContent = color;
+        $$('#pdp-colors [data-color]').forEach(x => {
+          x.classList.toggle('active', x.dataset.color === color);
+        });
+
+        // Update size pills availability for selected colour
+        $$('#pdp-sizes [data-size]').forEach(btn => {
+          const s = btn.dataset.size;
+          const sStock = getVariantStockFor(p, s, color);
+          btn.setAttribute('aria-pressed', s === size ? 'true' : 'false');
+          btn.classList.toggle('variant-unavailable', sStock <= 0);
+          btn.title = sStock > 0 ? `${sStock} available in ${color}` : `Out of stock in ${color}`;
+        });
+
+        // Clamp quantity to available variant stock
+        if (vStock > 0 && qty > vStock) {
+          qty = vStock;
+          const qtyEl = $('#qty');
+          if (qtyEl) qtyEl.textContent = qty;
+        } else if (vStock <= 0) {
+          qty = 1;
+          const qtyEl = $('#qty');
+          if (qtyEl) qtyEl.textContent = '1';
+        }
+
+        // Update rating strip stock label
+        const statusLbl = $('#pdp-stock-status-label');
+        if (statusLbl) {
+          statusLbl.style.color = vStock > 0 ? 'var(--success)' : '#dc2626';
+          statusLbl.textContent = vStock > 0 ? 'In Stock & Ready for Tailored Dispatch' : 'Selected Variant Unavailable';
+        }
+
+        // Update urgency badge
+        const urgencyEl = $('#pdp-urgency-badge');
+        if (urgencyEl) {
+          urgencyEl.textContent = vStock <= 0
+            ? `Currently Out of Stock for ${size} · ${color}`
+            : (vStock <= 3
+              ? `Limited Edition: Only ${vStock} unit${vStock === 1 ? '' : 's'} remaining for ${size} · ${color}`
+              : `Authentic Handcrafted Creation: ${vStock} units available (${size} · ${color})`);
+        }
+
+        // Update variant stock status note
+        const noteEl = $('#pdp-variant-stock-note');
+        if (noteEl) {
+          noteEl.className = `pdp-variant-stock-note ${vStock <= 0 ? 'out-of-stock' : (vStock <= 3 ? 'low-stock' : 'in-stock')}`;
+          noteEl.textContent = vStock <= 0
+            ? `✕ ${size} · ${color} is currently out of stock`
+            : (vStock <= 3
+              ? `⚡ Only ${vStock} piece${vStock === 1 ? '' : 's'} left in ${size} · ${color}`
+              : `✓ ${vStock} pieces available in ${size} · ${color}`);
+        }
+
+        // Enable / disable Add to Shopping Bag button
+        const addBtn = $('#add');
+        if (addBtn) {
+          addBtn.disabled = vStock <= 0;
+          addBtn.textContent = vStock > 0 ? 'Add to Shopping Bag' : 'Variant Out of Stock';
+        }
+
+        // Show / hide Restock Alert box dynamically
+        const restockBox = $('#pdp-restock-box');
+        const restockBadge = $('#pdp-restock-badge');
+        if (restockBox) {
+          restockBox.style.display = vStock <= 3 ? '' : 'none';
+        }
+        if (restockBadge) {
+          restockBadge.textContent = vStock <= 0
+            ? `Sold Out (${size} · ${color})`
+            : `Only ${vStock} left (${size} · ${color})`;
+        }
+      };
+
       // Color selection
-      $$('[data-color]').forEach(b => {
+      $$('#pdp-colors [data-color]').forEach(b => {
         b.onclick = () => {
           color = b.dataset.color;
-          $$('[data-color]').forEach(x => x.classList.toggle('active', x === b));
+          // If current size is unavailable in this new colour, keep user choice visible OR switch to first available if user prefers; keeping current selection visible lets them see exact status while Add to Bag stays disabled
+          updatePDPVariantUI();
         };
       });
 
       // Size Selection
-      $$('[data-size]').forEach(b => {
+      $$('#pdp-sizes [data-size]').forEach(b => {
         b.onclick = () => {
           size = b.dataset.size;
-          $$('[data-size]').forEach(x => x.setAttribute('aria-pressed', x === b));
+          updatePDPVariantUI();
         };
       });
 
-      // Quantity controls
-      $('#plus').onclick = () => { qty = Math.min(qty + 1, p.stock || 9); $('#qty').textContent = qty; };
+      // Quantity controls (capped by selected variant's live stock)
+      $('#plus').onclick = () => {
+        const maxStock = getVariantStockFor(p, size, color);
+        if (maxStock <= 0) {
+          toast(`Selected variant (${size} · ${color}) is out of stock.`);
+          return;
+        }
+        if (qty >= maxStock) {
+          toast(`Maximum ${maxStock} unit${maxStock === 1 ? '' : 's'} available for ${size} · ${color}.`);
+          return;
+        }
+        qty = Math.min(qty + 1, maxStock);
+        $('#qty').textContent = qty;
+      };
       $('#minus').onclick = () => { qty = Math.max(qty - 1, 1); $('#qty').textContent = qty; };
 
-      // Add to bag
+      // Add to bag (strictly prevents purchasing unavailable variants)
       $('#add').onclick = () => {
         if (!size) { toast('Please select your preferred size first'); return; }
-        addToCart(p.id, size, qty, color);
-        toast(`${p.name} (${size} · ${color}) added to your shopping bag`, 'cart.html', 'View Bag');
+        const vStock = getVariantStockFor(p, size, color);
+        if (vStock <= 0) {
+          toast(`Sorry, ${p.name} (${size} · ${color}) is currently out of stock.`);
+          return;
+        }
+        if (qty > vStock) {
+          toast(`Only ${vStock} unit${vStock === 1 ? '' : 's'} available for ${size} · ${color}.`);
+          return;
+        }
+        const ok = addToCart(p.id, size, qty, color);
+        if (ok) {
+          toast(`${p.name} (${size} · ${color}) added to your shopping bag`, 'cart.html', 'View Bag');
+        }
       };
 
       // Wishlist toggle
@@ -3229,7 +3814,6 @@
               if (formEl) formEl.style.display = 'none';
               if (succEl) succEl.style.display = 'flex';
               toast(`Priority restock alert confirmed for ${p.name}!`);
-              if (typeof fetchCustomerNotifications === 'function') fetchCustomerNotifications();
             } else {
               toast(data.error || 'Failed to subscribe for restock alerts.');
               restockBtn.disabled = false;
@@ -3339,7 +3923,9 @@
         <div class="two-col-layout wrap">
           <div>
             <h1 style="font-size:2.2rem;margin-bottom:1.5rem">Your Shopping Bag (${ls.reduce((s, i) => s + i.qty, 0)})</h1>
-            ${ls.map((l, i) => `
+            ${ls.map((l, i) => {
+              const pr = getProductDisplayPricing(l.p);
+              return `
               <div class="cart-item">
                 <a class="cart-item-thumb" href="product.html?id=${l.p.id}">
                   <img src="${l.p.image || 'images/p1.jpg'}" alt="${esc(l.p.name)}">
@@ -3347,7 +3933,8 @@
                 <div>
                   <h3 style="font-size:1.15rem"><a href="product.html?id=${l.p.id}">${esc(l.p.name)}</a></h3>
                   <p class="muted" style="font-size:0.9rem;margin:0.2rem 0 0.8rem">
-                    Size: <strong>${l.size}</strong> · Shade: <strong>${esc(l.color || 'Standard')}</strong> · ${money(l.p.price)}
+                    Size: <strong>${l.size}</strong> · Shade: <strong>${esc(l.color || 'Standard')}</strong> · ${moneyExact(pr.effectivePrice)}
+                    ${pr.hasActiveDiscount ? `<span style="text-decoration:line-through;margin-left:0.35rem">${moneyExact(pr.originalPrice)}</span> <span style="color:var(--success);font-weight:600;margin-left:0.3rem">Save ${moneyExact(pr.savings * l.qty)}</span>` : ''}
                   </p>
                   <div class="qty-control" style="height:2.4rem">
                     <button data-q="${i}:-1" aria-label="Fewer">−</button>
@@ -3358,9 +3945,10 @@
                     <button class="link" data-rm="${i}" style="color:var(--wine);font-size:0.85rem;text-decoration:underline;background:none;border:none;cursor:pointer">Remove item</button>
                   </div>
                 </div>
-                <strong style="font-size:1.15rem;color:var(--wine)">${money(l.p.price * l.qty)}</strong>
+                <strong style="font-size:1.15rem;color:var(--wine)">${moneyExact(pr.effectivePrice * l.qty)}</strong>
               </div>
-            `).join('')}
+            `;
+            }).join('')}
           </div>
 
           <aside class="summary-card">
@@ -3396,10 +3984,18 @@
       $$('[data-q]').forEach(b => b.onclick = () => {
         const [i, d] = b.dataset.q.split(':').map(Number);
         const c = db.get('cart', []);
-        c[i].qty = Math.min(Math.max(c[i].qty + d, 1), 9);
+        if (!c[i]) return;
+        const prod = byId(c[i].id);
+        const maxAvail = prod ? getVariantStockFor(prod, c[i].size, c[i].color) : 9;
+        const nextQty = c[i].qty + d;
+        if (d > 0 && maxAvail > 0 && nextQty > maxAvail) {
+          toast(`Only ${maxAvail} unit(s) available for ${prod?.name || 'this item'} (${c[i].size} · ${c[i].color}).`);
+          return;
+        }
+        c[i].qty = Math.min(Math.max(nextQty, 1), Math.max(1, maxAvail || 9));
         db.set('cart', c);
         if (db.token()) {
-          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => {});
+          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => { });
         }
         pages.cart();
       });
@@ -3408,7 +4004,7 @@
         const c = db.get('cart', []).filter((_, i) => i !== +b.dataset.rm);
         db.set('cart', c);
         if (db.token()) {
-          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => {});
+          fetchAuth('/api/cart/sync', { method: 'POST', body: { items: c } }).catch(() => { });
         }
         pages.cart();
       });
@@ -3487,7 +4083,7 @@
         try {
           const res = await fetchAuth('/api/user/addresses');
           if (res.ok) savedAddresses = await res.json();
-        } catch {}
+        } catch { }
       }
 
       // Pre-fill customer details if logged in
@@ -3526,7 +4122,10 @@
             if ($('#o-p')) $('#o-p').value = a.phone;
             if ($('#o-a')) $('#o-a').value = a.address_line1 + (a.address_line2 ? ', ' + a.address_line2 : '');
             if ($('#o-c')) $('#o-c').value = a.city;
-            if ($('#o-s')) $('#o-s').value = a.state || '';
+            if ($('#o-s')) {
+              $('#o-s').value = a.state || '';
+              $('#o-s').dispatchEvent(new Event('input'));
+            }
             if ($('#o-pin')) $('#o-pin').value = a.pincode;
             toast(`Selected saved address: ${a.label}`);
           };
@@ -3535,17 +4134,24 @@
 
       // Fetch payment gateway configuration
       let paymentConfig = {
-        razorpayKeyId: 'rzp_test_51ABCD1234EFGH',
+        razorpayKeyId: '',
         upiVpa: 'satinostitch@upi',
         merchantName: 'SATINOSTITCH'
       };
       try {
         const cfgRes = await fetch('/api/payment/config');
         if (cfgRes.ok) paymentConfig = await cfgRes.json();
-      } catch {}
+      } catch { }
 
-      // Update payment guide & dynamic button text
-      const t = totals(ls);
+      // Update payment guide, live GST breakdown & dynamic button text based on Place of Supply (State)
+      let t = totals(ls, $('#o-s')?.value || '');
+      const refreshCheckoutSummaryAndTax = () => {
+        t = totals(ls, $('#o-s')?.value || '');
+        if ($('#order-summary')) {
+          $('#order-summary').innerHTML = summary(ls, t);
+        }
+        updatePaymentUI();
+      };
       const updatePaymentUI = () => {
         const selectedRadio = $('input[name="payment"]:checked');
         const method = selectedRadio ? selectedRadio.value : 'upi';
@@ -3623,10 +4229,12 @@
       };
 
       $$('input[name="payment"]').forEach(r => r.addEventListener('change', updatePaymentUI));
-      updatePaymentUI();
+      $('#o-s')?.addEventListener('input', refreshCheckoutSummaryAndTax);
+      $('#o-s')?.addEventListener('change', refreshCheckoutSummaryAndTax);
+      refreshCheckoutSummaryAndTax();
 
       // Core Order Finalization helper
-      async function completeOrderPlacement(customer, paymentMethod, paymentStatus, paymentId) {
+      async function completeOrderPlacement(customer, paymentMethod, paymentStatus, paymentId, razorpayMeta = {}) {
         const submitBtn = $('#place-order-btn');
         if (submitBtn) {
           submitBtn.disabled = true;
@@ -3643,7 +4251,10 @@
               couponCode: db.get('promo', ''),
               paymentMethod,
               paymentStatus,
-              paymentId: paymentId || null,
+              paymentId: paymentId || razorpayMeta.razorpayPaymentId || null,
+              razorpayOrderId: razorpayMeta.razorpayOrderId || null,
+              razorpayPaymentId: razorpayMeta.razorpayPaymentId || null,
+              razorpaySignature: razorpayMeta.razorpaySignature || null,
               shippingAddress: {
                 recipient: customer.name,
                 line1: customer.address,
@@ -3666,11 +4277,7 @@
           const trackingNumber = orderInfo.trackingNumber || data.trackingNumber || 'TRK-SS-PENDING';
           const orderTotal = orderInfo.total || data.total || t.total;
 
-          // Trigger Smart Notifications update
-          if (typeof fetchCustomerNotifications === 'function') {
-            fetchCustomerNotifications();
-          }
-          toast(`Commission Order #${orderId} Confirmed! Check Smart Notifications for live updates.`, 'account.html?tab=orders', 'View Orders');
+          toast(`Commission Order #${orderId} Confirmed! Track live updates in your account.`, 'login.html?tab=orders', 'View Orders');
 
           checkoutEl.innerHTML = `
             <div class="wrap" style="max-width:620px;margin:4rem auto;text-align:center;background:#fff;padding:3.5rem;border-radius:var(--radius-lg);border:1px solid var(--line);box-shadow:var(--shadow-md)">
@@ -3806,17 +4413,52 @@
       }
 
       // Modal Helper: Razorpay Card Checkout
-      function launchRazorpayCardFlow(customer) {
-        // Attempt official Razorpay Checkout popup
+      async function launchRazorpayCardFlow(customer) {
+        const submitBtn = $('#place-order-btn');
         if (typeof window.Razorpay === 'function') {
           try {
-            const rzp = new window.Razorpay({
-              key: paymentConfig.razorpayKeyId || 'rzp_test_51ABCD1234EFGH',
-              amount: Math.round(t.total * 100),
-              currency: 'INR',
-              name: 'SATINOSTITCH',
+            if (submitBtn) {
+              submitBtn.disabled = true;
+              submitBtn.textContent = 'Connecting to Razorpay...';
+            }
+
+            // 1. Create a signed Razorpay Order on the backend
+            let rzpOrder = null;
+            try {
+              const ordRes = await fetchAuth('/api/orders/razorpay-order', {
+                method: 'POST',
+                body: {
+                  items: db.get('cart', []),
+                  promo: db.get('promo', ''),
+                  couponCode: db.get('promo', ''),
+                  state: customer.state || 'Gujarat',
+                  amount: t.total
+                }
+              });
+              const ordData = await ordRes.json();
+              if (ordRes.ok && ordData.id) {
+                rzpOrder = ordData;
+              } else {
+                throw new Error(ordData.error || 'Could not create Razorpay order');
+              }
+            } finally {
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                updatePaymentUI();
+              }
+            }
+
+            const rzpKey = (rzpOrder && rzpOrder.keyId) || paymentConfig.razorpayKeyId;
+            if (!rzpKey) throw new Error('Razorpay Key ID missing');
+
+            const rzpOptions = {
+              key: rzpKey,
+              amount: rzpOrder ? rzpOrder.amount : Math.round(t.total * 100),
+              currency: (rzpOrder && rzpOrder.currency) || 'INR',
+              order_id: rzpOrder ? rzpOrder.id : undefined,
+              name: paymentConfig.merchantName || 'SATINOSTITCH',
               description: 'Bespoke Atelier Order Payment',
-              image: '/images/emblem.png',
+              image: '/images/emblem-white.png',
               prefill: {
                 name: customer.name,
                 email: customer.email,
@@ -3829,15 +4471,41 @@
                 color: '#30483B'
               },
               handler: async function (response) {
-                toast('Razorpay payment verified successfully!');
-                await completeOrderPlacement(customer, 'card', 'paid', response.razorpay_payment_id);
+                try {
+                  // 2. Cryptographically verify Razorpay HMAC-SHA256 signature on backend
+                  if (response.razorpay_order_id && response.razorpay_signature) {
+                    const verRes = await fetchAuth('/api/orders/verify-payment', {
+                      method: 'POST',
+                      body: {
+                        razorpayOrderId: response.razorpay_order_id,
+                        razorpayPaymentId: response.razorpay_payment_id,
+                        razorpaySignature: response.razorpay_signature
+                      }
+                    });
+                    const verData = await verRes.json();
+                    if (!verRes.ok || !verData.verified) {
+                      toast(verData.error || 'Razorpay signature verification failed.');
+                      return;
+                    }
+                  }
+                  toast('Razorpay payment verified successfully!');
+                  await completeOrderPlacement(customer, 'card', 'paid', response.razorpay_payment_id, {
+                    razorpayOrderId: response.razorpay_order_id || (rzpOrder && rzpOrder.id) || null,
+                    razorpayPaymentId: response.razorpay_payment_id || null,
+                    razorpaySignature: response.razorpay_signature || null
+                  });
+                } catch (verErr) {
+                  toast(verErr.message || 'Payment verification failed.');
+                }
               },
               modal: {
                 ondismiss: function () {
                   toast('Razorpay card payment was cancelled.');
                 }
               }
-            });
+            };
+
+            const rzp = new window.Razorpay(rzpOptions);
 
             rzp.on('payment.failed', function (resp) {
               toast(`Razorpay payment error: ${resp.error ? resp.error.description : 'Failed'}`);
@@ -3847,10 +4515,14 @@
             return;
           } catch (e) {
             console.warn('[Razorpay] SDK checkout failed to initialize, launching card emulator:', e);
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              updatePaymentUI();
+            }
           }
         }
 
-        // Fallback Razorpay Card Dialog (for test mode / local dev without active merchant KYC)
+        // Fallback Razorpay Card Dialog (if offline or SDK unavailable)
         showRazorpayCardModal(customer);
       }
 
@@ -4006,12 +4678,18 @@
 
           <div class="account-nav">
             <button class="account-tab-btn active" data-tab="orders">My Orders &amp; Tracking</button>
+            <button class="account-tab-btn" data-tab="returns">Returns &amp; Refunds</button>
             <button class="account-tab-btn" data-tab="addresses">Saved Addresses</button>
             <button class="account-tab-btn" data-tab="wishlist">Curated Wishlist</button>
             <button class="account-tab-btn" data-tab="profile">Profile Details</button>
+            <button class="account-tab-btn" data-tab="support">Customer Support</button>
           </div>
 
           <div id="account-tab-content">Loading your bespoke details...</div>
+
+          <div id="user-panel-support-strip" style="margin-top:2.2rem;padding-top:1.8rem;border-top:1px solid var(--line)">
+            ${renderCustomerSupportCardsHTML({ compact: true, showHeading: true })}
+          </div>
         `;
 
         $('#customer-signout-btn').onclick = () => {
@@ -4019,6 +4697,13 @@
           toast('You have successfully signed out.');
           mountChrome();
           pages.login();
+          setTimeout(() => {
+            const loginForm = document.querySelector('#customer-login-form');
+
+            if (loginForm) {
+              loginForm.reset();
+            }
+          }, 0);
         };
 
         const renderTab = async (tabName) => {
@@ -4038,7 +4723,7 @@
                 container.innerHTML = orders.map(o => {
                   const items = Array.isArray(o.items) ? o.items : [];
                   const statusClass = (o.status || 'confirmed').toLowerCase().replace(/\s+/g, '-');
-                  
+
                   // Tracking Steps Logic
                   const steps = ['Confirmed', 'In Atelier', 'Dispatched', 'Out for Delivery', 'Delivered'];
                   const currentIdx = steps.indexOf(o.status);
@@ -4060,15 +4745,15 @@
                       ${o.status !== 'Cancelled' ? `
                         <div class="tracking-stepper">
                           ${steps.map((s, idx) => {
-                            const isDone = currentIdx >= idx;
-                            const isCurrent = currentIdx === idx;
-                            return `
+                    const isDone = currentIdx >= idx;
+                    const isCurrent = currentIdx === idx;
+                    return `
                               <div class="tracking-step ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''}">
                                 <div class="tracking-dot">${isDone ? '✓' : idx + 1}</div>
                                 <div class="tracking-label">${s}</div>
                               </div>
                             `;
-                          }).join('')}
+                  }).join('')}
                         </div>
                       ` : `
                         <div style="background:#fee2e2;color:#991b1b;padding:0.8rem 1rem;border-radius:var(--radius-sm);margin:1rem 0;font-size:0.9rem">
@@ -4126,23 +4811,10 @@
                   };
                 });
 
-                // Return Order Event Delegate
+                // Return Order Event Delegate -> directs patron to dedicated Return Page pre-selected for this order
                 $$('.return-order-btn').forEach(btn => {
-                  btn.onclick = async () => {
-                    const reason = prompt('Please specify return reason (e.g. Size Exchange / Drape fit):', 'Size Exchange Needed');
-                    if (!reason) return;
-                    try {
-                      const res = await fetchAuth(`/api/orders/${btn.dataset.orderId}/return`, {
-                        method: 'POST',
-                        body: { reason }
-                      });
-                      const d = await res.json();
-                      if (!res.ok) throw new Error(d.error);
-                      toast('Return request submitted. Our concierge will schedule courier pickup.');
-                      renderTab('orders');
-                    } catch (err) {
-                      toast(err.message || 'Could not initiate return.');
-                    }
+                  btn.onclick = () => {
+                    window.location.href = `returns.html?order=${encodeURIComponent(btn.dataset.orderId)}`;
                   };
                 });
               } else {
@@ -4157,6 +4829,14 @@
             } catch {
               container.innerHTML = '<p class="muted">Could not retrieve order history at this time.</p>';
             }
+          }
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Returns & Refunds Portal
+             ========================================================================== */
+          else if (tabName === 'returns') {
+            const urlOrder = new URLSearchParams(location.search).get('order') || '';
+            await renderCustomerReturnsPortal(container, urlOrder);
           }
 
           /* ==========================================================================
@@ -4176,7 +4856,7 @@
                 
                 <div id="new-addr-form-box" style="display:none;background:#fff;border:1px solid var(--gold);padding:1.8rem;border-radius:var(--radius);margin-bottom:2rem">
                   <h3 style="margin-bottom:1rem">Add Bespoke Delivery Address</h3>
-                  <form id="create-addr-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                  <form id="create-addr-form" class="responsive-two-col-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
                     <div><label style="font-size:0.85rem;font-weight:600">Address Label</label><input name="label" placeholder="Home, Atelier, Work" value="Home" required></div>
                     <div><label style="font-size:0.85rem;font-weight:600">Recipient Name</label><input name="recipientName" placeholder="Full name" value="${esc(customer.name)}" required></div>
                     <div><label style="font-size:0.85rem;font-weight:600">Contact Phone</label><input name="phone" placeholder="10-digit mobile" value="${esc(customer.phone || '')}" required></div>
@@ -4206,7 +4886,7 @@
                         <button class="link delete-addr-btn" data-addr-id="${a.id}" style="color:#b91c1c;font-size:0.82rem;background:none;border:none;cursor:pointer">Delete Address</button>
                       </div>
                     </div>
-                  `).join('') : '<p class="muted">No saved addresses found. Add one for rapid one-click checkout.</p>'}
+                  `).join('') : '<p class="muted">No saved addresses found.<br> Add one for rapid one-click checkout.</p>'}
                 </div>
               `;
 
@@ -4330,13 +5010,35 @@
               }
             };
           }
+
+          /* ==========================================================================
+             CUSTOMER / PERSONAL TAB: Customer Support (Phone & Email)
+             ========================================================================== */
+          else if (tabName === 'support') {
+            container.innerHTML = `
+              ${renderCustomerSupportCardsHTML({ compact: false, showHeading: true })}
+              <div class="account-card" style="margin-top:1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
+                <div>
+                  <strong style="color:var(--wine);font-size:1.02rem">Prefer to send a detailed bespoke inquiry?</strong>
+                  <p class="muted" style="margin:0.25rem 0 0;font-size:0.88rem">Submit your sizing, order, or couture inquiry through our contact form.</p>
+                </div>
+                <a class="btn gold sm" href="contact.html">Open Contact Form</a>
+              </div>
+            `;
+            hydrateSupportContactUI();
+          }
+
+          const stripEl = $('#user-panel-support-strip');
+          if (stripEl) stripEl.style.display = tabName === 'support' ? 'none' : '';
         };
 
         $$('.account-tab-btn').forEach(b => {
           b.onclick = () => renderTab(b.dataset.tab);
         });
 
-        renderTab('orders');
+        const initialAccountTab = new URLSearchParams(location.search).get('tab');
+        const allowedAccountTabs = ['orders', 'returns', 'addresses', 'wishlist', 'profile', 'support'];
+        renderTab(allowedAccountTabs.includes(initialAccountTab) ? initialAccountTab : 'orders');
         return;
       }
 
@@ -4348,7 +5050,7 @@
             <div class="vip-auth-card" style="box-shadow:var(--shadow-md)">
               <div class="vip-auth-body">
                 <div class="vip-auth-header">
-                  <img src="images/emblem.png" alt="SATINOSTITCH" class="vip-auth-emblem">
+                  <img src="images/emblem-white.png" alt="SATINOSTITCH" class="vip-auth-emblem">
                   <h2 class="vip-auth-title">${mode === 'in' ? 'Sign In to Atelier' : 'Join VIP Patronage'}</h2>
                   <p class="vip-auth-sub">${mode === 'in' ? 'Access your private trousseau wishlist, order milestones, and concierge services.' : 'Create your private atelier account to unlock bespoke tailoring tracking and member curations.'}</p>
                 </div>
@@ -4505,7 +5207,7 @@
             await syncUserWishlist();
             const localCart = db.get('cart', []);
             if (localCart.length) {
-              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => {});
+              fetchAuth('/api/cart/sync', { method: 'POST', body: { items: localCart } }).catch(() => { });
             }
             toast(`Welcome, ${data.user.name}!`);
             mountChrome();
@@ -4521,6 +5223,60 @@
       };
 
       renderAuth();
+    },
+
+    /* ---------- Dedicated Customer Return Management Page (returns.html) ---------- */
+    async returns() {
+      const root = $('#returns-root');
+      if (!root) return;
+
+      document.body.classList.remove('admin-dashboard-theme');
+      const siteHeader = $('#site-header');
+      if (siteHeader) siteHeader.style.display = '';
+
+      const customer = db.customerUser();
+      const token = db.customerToken();
+      const preselectOrderId = new URLSearchParams(location.search).get('order') || '';
+
+      if (!customer || !token) {
+        root.innerHTML = `
+          <div class="empty" style="text-align:center;padding:5rem 1rem">
+            <span class="hero-pill" style="margin-bottom:1rem">Atelier Patron Care</span>
+            <h1 style="font-size:2.2rem;margin:0.6rem 0 0.5rem">Returns &amp; Exchanges</h1>
+            <p class="muted" style="margin:0.5rem 0 2rem;max-width:500px;margin-inline:auto">
+              Sign in to your patron account to request a return for delivered creations and track resolution updates in real time.
+            </p>
+            <button class="btn gold" id="returns-page-signin-btn" style="cursor:pointer">Sign In / Join VIP Patronage</button>
+          </div>`;
+        const signInBtn = $('#returns-page-signin-btn');
+        if (signInBtn) {
+          signInBtn.onclick = () => {
+            openAuthModal({
+              actionTitle: 'Sign In to Manage Returns',
+              message: 'Access your delivered orders, submit return requests, and view real-time return status updates.',
+              onAuthenticated: () => pages.returns()
+            });
+          };
+        }
+        return;
+      }
+
+      root.innerHTML = `
+        <div class="account-header">
+          <div>
+            <span class="hero-pill" style="margin-bottom:0.4rem;display:inline-block">Patron Concierge</span>
+            <h1 style="font-size:2.2rem">Returns &amp; Refunds</h1>
+            <p class="muted">Signed in as ${esc(customer.name)} (${esc(customer.email)})</p>
+          </div>
+          <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+            <a href="login.html?tab=orders" class="btn ghost sm">My Orders</a>
+            <a href="shop.html" class="btn gold sm">Continue Shopping</a>
+          </div>
+        </div>
+        <div id="returns-portal-mount"></div>
+      `;
+
+      await renderCustomerReturnsPortal($('#returns-portal-mount'), preselectOrderId);
     },
 
     /* ---------- Dedicated Hardened Atelier Admin Dashboard ---------- */
@@ -4548,7 +5304,7 @@
             renderAdminDashboard(root, admin);
             return;
           }
-        } catch(e) {}
+        } catch (e) { }
         db.clearAdminAuth();
       }
 
@@ -4561,7 +5317,7 @@
               <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4F46E5"></span>
               Atelier Security Gateway
             </div>
-            <img src="images/emblem.png" alt="SATINOSTITCH" style="height:44px;margin-bottom:0.75rem;display:block;margin-left:auto;margin-right:auto">
+            <img src="images/emblem-white.png" alt="SATINOSTITCH" style="height:44px;margin-bottom:0.75rem;display:block;margin-left:auto;margin-right:auto">
             <h2 style="font-size:1.35rem;font-weight:700;color:#0F172A;letter-spacing:-0.01em;margin:0 0 0.35rem">Administrator Access Gate</h2>
             <p style="font-size:0.84rem;color:#64748B;margin:0">Restricted portal for authorized atelier management.</p>
           </div>
@@ -4688,9 +5444,9 @@
           <aside class="admin-sidebar" id="admin-sidebar">
             <div class="admin-sidebar-brand">
               <a href="admin.html" class="admin-sidebar-brand-link" title="SATINOSTITCH Atelier Administration">
-                <img src="images/emblem.png" alt="SATINOSTITCH" class="admin-sidebar-emblem">
+                <img src="images/emblem-white.png" alt="SATINOSTITCH Logo" class="admin-sidebar-emblem">
                 <div class="admin-sidebar-brand-text">
-                  <span class="admin-sidebar-wordmark">SATINOSTITCH</span>
+                  <span class="admin-sidebar-wordmark"><img src="images/logo-wordmark-white.png" alt="SATINOSTITCH Wordmark"></span>
                   <span class="admin-sidebar-tagline">Wear Elegance</span>
                 </div>
               </a>
@@ -4715,6 +5471,15 @@
                   </span>
                   <span class="admin-nav-text">Orders</span>
                   <span class="admin-nav-badge" id="sidebar-orders-badge">30</span>
+                </button>
+
+                <!-- 2b. Return Management -->
+                <button class="admin-nav-item account-tab-btn" data-tab="returns">
+                  <span class="admin-nav-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
+                  </span>
+                  <span class="admin-nav-text">Returns</span>
+                  <span class="admin-nav-badge" id="sidebar-returns-badge" style="display:none;background:#FEF3C7;color:#92400E">0</span>
                 </button>
 
                 <!-- 3. Products -->
@@ -5063,6 +5828,7 @@
               }
               const iconMap = {
                 order: { icon: '🛍️', cls: 'order', tab: 'admin-orders' },
+                return: { icon: '↩️', cls: 'alert', tab: 'returns' },
                 stock: { icon: '⚠️', cls: 'alert', tab: 'inventory' },
                 query: { icon: '💬', cls: 'promo', tab: 'support' },
                 user: { icon: '👑', cls: 'user', tab: 'users' },
@@ -5189,6 +5955,12 @@
                 const text = row.textContent.toLowerCase();
                 row.style.display = text.includes(q) ? '' : 'none';
               });
+            } else if (activeTab === 'returns') {
+              const retSearch = $('#admin-returns-search');
+              if (retSearch) {
+                retSearch.value = q;
+                retSearch.dispatchEvent(new Event('input'));
+              }
             } else if (activeTab === 'users') {
               $$('.admin-user-card, .admin-table tbody tr').forEach(row => {
                 const text = row.textContent.toLowerCase();
@@ -5414,8 +6186,8 @@
               resArea.innerHTML = '<span style="color:#DC2626">Please input a tracking number or Order ID.</span>';
               return;
             }
-            const match = ordersList.find(o => 
-              String(o.id).toLowerCase().includes(query) || 
+            const match = ordersList.find(o =>
+              String(o.id).toLowerCase().includes(query) ||
               String(o.tracking_number || '').toLowerCase().includes(query)
             );
             if (match) {
@@ -5480,17 +6252,17 @@
               <div style="display:grid;gap:0.6rem">
                 <div style="background:#F9FAFB;padding:0.75rem 0.9rem;border-radius:6px;border:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
                   <div>
-                    <strong style="color:#111827;font-size:0.84rem">Courier Logistics Hotline</strong>
-                    <div style="font-size:0.78rem;color:#6B7280">BlueDart / Delhivery Priority Pickup</div>
+                    <strong style="color:#111827;font-size:0.84rem">Customer Phone Support</strong>
+                    <div style="font-size:0.78rem;color:#6B7280">Availability: <span data-support-phone-hours>${esc(SUPPORT_CONFIG.phoneHours)}</span></div>
                   </div>
-                  <a href="tel:+919876543210" style="color:#111827;font-weight:600;font-size:0.84rem;text-decoration:none">+91 98765 43210</a>
+                  <a href="${esc(formatTelHref(SUPPORT_CONFIG.phone))}" data-support-phone-link style="color:#111827;font-weight:600;font-size:0.84rem;text-decoration:none">${esc(SUPPORT_CONFIG.phone)}</a>
                 </div>
                 <div style="background:#F9FAFB;padding:0.75rem 0.9rem;border-radius:6px;border:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
                   <div>
-                    <strong style="color:#111827;font-size:0.84rem">Atelier Operations Desk</strong>
-                    <div style="font-size:0.78rem;color:#6B7280">Support for catalog, inventory &amp; coupons</div>
+                    <strong style="color:#111827;font-size:0.84rem">Customer Email Support</strong>
+                    <div style="font-size:0.78rem;color:#6B7280">Availability: <span data-support-email-hours>${esc(SUPPORT_CONFIG.emailHours)}</span></div>
                   </div>
-                  <a href="mailto:concierge@satinostitch.com" style="color:#111827;font-weight:600;font-size:0.84rem;text-decoration:none">concierge@satinostitch.com</a>
+                  <a href="${esc(formatMailtoHref(SUPPORT_CONFIG.email))}" data-support-email-link style="color:#111827;font-weight:600;font-size:0.84rem;text-decoration:none">${esc(SUPPORT_CONFIG.email)}</a>
                 </div>
               </div>
             </div>
@@ -5509,7 +6281,7 @@
             const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(ordersList, null, 2));
             const dl = document.createElement('a');
             dl.setAttribute('href', dataStr);
-            dl.setAttribute('download', `satinostitch-orders-${new Date().toISOString().slice(0,10)}.json`);
+            dl.setAttribute('download', `satinostitch-orders-${new Date().toISOString().slice(0, 10)}.json`);
             dl.click();
             toast(`Exported ${ordersList.length} orders as JSON.`);
             return;
@@ -5535,7 +6307,7 @@
           const encodedUri = encodeURI(csvContent);
           const link = document.createElement('a');
           link.setAttribute('href', encodedUri);
-          link.setAttribute('download', `satinostitch-orders-${filterName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0,10)}.csv`);
+          link.setAttribute('download', `satinostitch-orders-${filterName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`);
           link.click();
           toast(`Exported ${ordersList.length} orders to CSV successfully.`);
         }
@@ -5587,12 +6359,12 @@
 
           let p = PRODUCTS.find(x => x.id === productId);
           try {
-            const res = await fetch(`/api/products/${productId}`);
+            const res = await fetchAuth(`/api/products/${productId}`);
             if (res.ok) {
               const fresh = await res.json();
               if (fresh && fresh.id) p = fresh;
             }
-          } catch (e) {}
+          } catch (e) { }
 
           if (!p) {
             toast('Product details not found.');
@@ -5684,9 +6456,9 @@
 
                     <div class="admin-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:12px">
                       ${currentImages.map((img, idx) => {
-                        const isPrimary = idx === 0;
-                        const assigned = angleLabels[idx] || 'Front View';
-                        return `
+              const isPrimary = idx === 0;
+              const assigned = angleLabels[idx] || 'Front View';
+              return `
                           <div class="admin-photo-card" style="background:#FFF;border:1px solid ${isPrimary ? 'var(--gold)' : '#E5E7EB'};border-radius:8px;padding:8px;display:flex;flex-direction:column;position:relative;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
                             ${isPrimary ? `
                               <span style="position:absolute;top:12px;left:12px;background:var(--wine);color:#FFF;font-size:0.68rem;padding:2px 7px;border-radius:4px;font-weight:700;z-index:2;box-shadow:0 2px 4px rgba(0,0,0,0.2)">
@@ -5695,9 +6467,9 @@
                             ` : ''}
 
                             <div style="width:100%;aspect-ratio:4/5;border-radius:6px;overflow:hidden;background:#F3F4F6;margin-bottom:8px;position:relative">
-                              <img src="${img}" alt="${esc(p.name)} angle ${idx+1}" style="width:100%;height:100%;object-fit:cover">
+                              <img src="${img}" alt="${esc(p.name)} angle ${idx + 1}" style="width:100%;height:100%;object-fit:cover">
                               <span style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.65);color:#FFF;font-size:0.68rem;padding:1px 6px;border-radius:4px">
-                                Angle ${idx+1}
+                                Angle ${idx + 1}
                               </span>
                             </div>
 
@@ -5727,7 +6499,7 @@
                             </div>
                           </div>
                         `;
-                      }).join('')}
+            }).join('')}
                     </div>
                   </div>
 
@@ -5894,10 +6666,763 @@
         };
 
         // Legacy compatibility stubs
-        const openAdmin3DPreviewModal = (src, name) => {};
+        const openAdmin3DPreviewModal = (src, name) => { };
         const openAdminFittingStudioModal = (pid) => { openAdminPhotoStudioModal(pid); };
         const openAdminTryonConfigModal = (pid, onSaved) => { openAdminPhotoStudioModal(pid, onSaved); };
         openAdmin3DLinkModal = (pid, name, currentModel, onSaved) => { openAdminPhotoStudioModal(pid, onSaved); };
+
+        /* ==========================================================================
+           SHARED ADMIN HELPERS: Product Status Pills & Size/Color Variant Builder
+           ========================================================================== */
+        const STANDARD_GARMENT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+        const ATELIER_COLOR_PRESETS = [
+          { name: 'Royal Wine', hex: '#5B1835' },
+          { name: 'Antique Gold', hex: '#C6A15B' },
+          { name: 'Ivory Cream', hex: '#F3DFB7' },
+          { name: 'Emerald Silk', hex: '#1B4332' },
+          { name: 'Midnight Navy', hex: '#1E293B' },
+          { name: 'Madder Crimson', hex: '#8C2F39' },
+          { name: 'Blush Rose', hex: '#D4A5A5' },
+          { name: 'Obsidian Black', hex: '#111827' }
+        ];
+
+        const renderPublishStatusPill = (status) => {
+          const st = String(status || 'published').toLowerCase();
+          if (st === 'draft') return '<span class="admin-pill draft">Draft</span>';
+          if (st === 'archived') return '<span class="admin-pill archived">Archived</span>';
+          return '<span class="admin-pill published">Published</span>';
+        };
+
+        /**
+         * Reusable Size + Color + Size×Color Stock Matrix Builder
+         * Used in both Product Creation form and Edit Product modal.
+         */
+        const createAdminVariantBuilder = (mountEl, initial = {}, onTotalChange = null) => {
+          if (!mountEl) return null;
+
+          // Seed sizes
+          let selectedSizes = Array.isArray(initial.sizes) && initial.sizes.length
+            ? [...new Set(initial.sizes.map(s => String(s).trim()).filter(Boolean))]
+            : ['XS', 'S', 'M', 'L', 'XL'];
+
+          // Seed colors
+          let selectedColors = [];
+          if (Array.isArray(initial.colors) && initial.colors.length) {
+            initial.colors.forEach(c => {
+              const name = typeof c === 'string' ? c.trim() : String(c.name || '').trim();
+              const hex = typeof c === 'string' ? '#5B1835' : (c.hex || '#5B1835');
+              if (name && !selectedColors.some(x => x.name.toLowerCase() === name.toLowerCase())) {
+                selectedColors.push({ name, hex });
+              }
+            });
+          }
+          if (!selectedColors.length) {
+            selectedColors = [{ name: 'Royal Wine', hex: '#5B1835' }];
+          }
+
+          // Seed variant map: key = `${size}::${colorName.toLowerCase()}`
+          const variantMap = new Map();
+          const initialVariants = Array.isArray(initial.variants) ? initial.variants : [];
+          if (initialVariants.length) {
+            initialVariants.forEach(v => {
+              const sz = String(v.size || '').trim();
+              const cn = String(v.colorName || v.color_name || '').trim();
+              const hx = v.colorHex || v.color_hex || '#5B1835';
+              if (!sz || !cn) return;
+              if (!selectedSizes.includes(sz)) selectedSizes.push(sz);
+              if (!selectedColors.some(x => x.name.toLowerCase() === cn.toLowerCase())) {
+                selectedColors.push({ name: cn, hex: hx });
+              }
+              variantMap.set(`${sz}::${cn.toLowerCase()}`, {
+                size: sz,
+                colorName: cn,
+                colorHex: hx,
+                stock: Math.max(0, parseInt(v.stock, 10) || 0),
+                isActive: v.isActive !== false && v.is_active !== false
+              });
+            });
+          }
+
+          // Track explicitly removed combinations so admin can manage individual variants
+          const removedKeys = new Set();
+
+          const ensureCombos = (defaultStockVal = 2) => {
+            selectedSizes.forEach(sz => {
+              selectedColors.forEach(col => {
+                const key = `${sz}::${col.name.toLowerCase()}`;
+                if (!removedKeys.has(key) && !variantMap.has(key)) {
+                  variantMap.set(key, {
+                    size: sz,
+                    colorName: col.name,
+                    colorHex: col.hex,
+                    stock: defaultStockVal,
+                    isActive: true
+                  });
+                } else if (variantMap.has(key)) {
+                  // Keep colorHex synced
+                  variantMap.get(key).colorHex = col.hex;
+                }
+              });
+            });
+            // Remove entries whose size or color is no longer selected
+            for (const [key, val] of variantMap.entries()) {
+              const hasSize = selectedSizes.includes(val.size);
+              const hasColor = selectedColors.some(c => c.name.toLowerCase() === val.colorName.toLowerCase());
+              if (!hasSize || !hasColor || removedKeys.has(key)) {
+                variantMap.delete(key);
+              }
+            }
+          };
+
+          const defaultInitStock = initialVariants.length ? 0 : (initial.defaultVariantStock !== undefined ? initial.defaultVariantStock : 2);
+          ensureCombos(defaultInitStock);
+
+          const getVariantsList = () => {
+            const list = [];
+            selectedSizes.forEach(sz => {
+              selectedColors.forEach(col => {
+                const key = `${sz}::${col.name.toLowerCase()}`;
+                if (variantMap.has(key)) list.push({ ...variantMap.get(key) });
+              });
+            });
+            return list;
+          };
+
+          const computeTotalStock = () => getVariantsList().reduce((acc, v) => acc + (v.isActive ? (Number(v.stock) || 0) : 0), 0);
+
+          const notifyTotal = () => {
+            const total = computeTotalStock();
+            const totalBadge = mountEl.querySelector('[data-vb-total]');
+            if (totalBadge) totalBadge.textContent = `${total} total units`;
+            if (typeof onTotalChange === 'function') onTotalChange(total);
+          };
+
+          const render = () => {
+            const allSizes = [...new Set([...STANDARD_GARMENT_SIZES, ...selectedSizes])];
+            const rows = getVariantsList();
+            const total = computeTotalStock();
+
+            mountEl.innerHTML = `
+              <div class="admin-variant-panel">
+                <!-- 1. Size Selection -->
+                <div style="margin-bottom:0.95rem">
+                  <div class="admin-variant-section-title">
+                    <span>Available Sizes (${selectedSizes.length} selected)</span>
+                    <div style="display:flex;gap:5px;align-items:center">
+                      <input type="text" data-vb-custom-size placeholder="Custom (e.g. 3XL)" style="width:120px;padding:3px 7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.75rem;background:#fff">
+                      <button type="button" data-vb-add-size class="btn sm ghost" style="padding:3px 9px;font-size:0.74rem;border:1px solid #D1D5DB;border-radius:5px;background:#fff;cursor:pointer;font-weight:600">+ Add</button>
+                    </div>
+                  </div>
+                  <div class="admin-size-pill-group">
+                    ${allSizes.map(sz => `
+                      <button type="button" class="admin-size-pill ${selectedSizes.includes(sz) ? 'active' : ''}" data-vb-size="${esc(sz)}">${esc(sz)}</button>
+                    `).join('')}
+                  </div>
+                </div>
+
+                <!-- 2. Color Selection -->
+                <div style="margin-bottom:0.95rem;padding-top:0.85rem;border-top:1px solid #E5E7EB">
+                  <div class="admin-variant-section-title">
+                    <span>Available Colours (${selectedColors.length} selected)</span>
+                    <span style="font-size:0.72rem;font-weight:500;color:#6B7280">Add multiple shades with swatches</span>
+                  </div>
+                  <div class="admin-color-chip-list">
+                    ${selectedColors.map((c, idx) => `
+                      <span class="admin-color-chip">
+                        <span class="admin-color-chip-dot" style="background:${esc(c.hex)}"></span>
+                        <span>${esc(c.name)}</span>
+                        <button type="button" class="admin-color-chip-remove" data-vb-rm-color="${idx}" title="Remove colour">&times;</button>
+                      </span>
+                    `).join('')}
+                  </div>
+                  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:0.55rem">
+                    <input type="color" data-vb-color-hex value="#5B1835" title="Pick swatch colour" style="width:36px;height:32px;padding:2px;border:1px solid #D1D5DB;border-radius:5px;background:#fff;cursor:pointer">
+                    <input type="text" data-vb-color-name placeholder="Colour name (e.g. Emerald Green)" style="flex:1;min-width:160px;padding:5px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;background:#fff">
+                    <button type="button" data-vb-add-color class="btn sm" style="background:#1E1E20;color:#fff;border:none;border-radius:5px;padding:6px 12px;font-size:0.76rem;font-weight:600;cursor:pointer">+ Add Colour</button>
+                  </div>
+                  <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+                    <span style="font-size:0.7rem;color:#6B7280;font-weight:600">Quick Shades:</span>
+                    ${ATELIER_COLOR_PRESETS.map(p => `
+                      <button type="button" class="admin-color-preset-btn" data-vb-preset-name="${esc(p.name)}" data-vb-preset-hex="${p.hex}">
+                        <span class="admin-color-chip-dot" style="width:10px;height:10px;background:${p.hex}"></span>
+                        ${esc(p.name)}
+                      </button>
+                    `).join('')}
+                  </div>
+                </div>
+
+                <!-- 3. Size × Color Stock Matrix -->
+                <div style="padding-top:0.85rem;border-top:1px solid #E5E7EB">
+                  <div class="admin-variant-section-title" style="flex-wrap:wrap">
+                    <span>Size × Colour Inventory Matrix (${rows.length} combinations · <strong data-vb-total style="color:#111827">${total} total units</strong>)</span>
+                    <div style="display:flex;gap:5px;align-items:center">
+                      <input type="number" min="0" data-vb-bulk-qty placeholder="Qty" style="width:62px;padding:3px 6px;border:1px solid #D1D5DB;border-radius:4px;font-size:0.75rem;background:#fff">
+                      <button type="button" data-vb-apply-bulk class="btn sm ghost" style="padding:3px 8px;font-size:0.72rem;border:1px solid #D1D5DB;border-radius:4px;background:#fff;cursor:pointer;font-weight:600">Set All</button>
+                      ${removedKeys.size > 0 ? `<button type="button" data-vb-restore-all class="btn sm ghost" style="padding:3px 8px;font-size:0.72rem;border:1px solid #D1D5DB;border-radius:4px;background:#fff;cursor:pointer">Restore Removed (${removedKeys.size})</button>` : ''}
+                    </div>
+                  </div>
+                  ${rows.length ? `
+                    <div class="admin-variant-matrix-wrap">
+                      <table class="admin-variant-matrix">
+                        <thead>
+                          <tr>
+                            <th>Colour</th>
+                            <th>Size</th>
+                            <th>Stock Qty</th>
+                            <th>Available</th>
+                            <th style="text-align:right">Remove</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${rows.map(v => {
+                            const key = `${v.size}::${v.colorName.toLowerCase()}`;
+                            return `
+                              <tr class="${!v.isActive ? 'variant-row-inactive' : ''}">
+                                <td>
+                                  <span style="display:inline-flex;align-items:center;gap:6px;font-weight:600;color:#111827">
+                                    <span class="admin-color-chip-dot" style="background:${esc(v.colorHex)}"></span>
+                                    ${esc(v.colorName)}
+                                  </span>
+                                </td>
+                                <td><strong>${esc(v.size)}</strong></td>
+                                <td>
+                                  <input type="number" min="0" class="admin-variant-stock-input" data-vb-qty-key="${esc(key)}" value="${v.stock}">
+                                </td>
+                                <td>
+                                  <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.74rem;cursor:pointer;color:${v.isActive && v.stock > 0 ? '#166534' : '#991B1B'}">
+                                    <input type="checkbox" data-vb-active-key="${esc(key)}" ${v.isActive ? 'checked' : ''}>
+                                    <span>${!v.isActive ? 'Disabled' : (v.stock > 0 ? 'In Stock' : 'Out of Stock')}</span>
+                                  </label>
+                                </td>
+                                <td style="text-align:right">
+                                  <button type="button" data-vb-rm-var="${esc(key)}" title="Remove this variant combination" style="background:none;border:none;color:#DC2626;font-size:0.9rem;cursor:pointer;padding:2px 5px">&times;</button>
+                                </td>
+                              </tr>
+                            `;
+                          }).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  ` : '<p class="muted" style="font-size:0.8rem;margin:0.4rem 0">Select at least one size and one colour to configure variant stock.</p>'}
+                </div>
+              </div>
+            `;
+
+            // Bind Size toggles
+            mountEl.querySelectorAll('[data-vb-size]').forEach(btn => {
+              btn.onclick = () => {
+                const sz = btn.dataset.vbSize;
+                if (selectedSizes.includes(sz)) {
+                  selectedSizes = selectedSizes.filter(s => s !== sz);
+                } else {
+                  selectedSizes.push(sz);
+                  // Clear any previously removed combos for this size
+                  selectedColors.forEach(c => removedKeys.delete(`${sz}::${c.name.toLowerCase()}`));
+                }
+                ensureCombos(1);
+                render();
+                notifyTotal();
+              };
+            });
+
+            // Bind Add custom size
+            const addSizeBtn = mountEl.querySelector('[data-vb-add-size]');
+            const customSizeInput = mountEl.querySelector('[data-vb-custom-size]');
+            if (addSizeBtn && customSizeInput) {
+              const doAddSize = () => {
+                const val = customSizeInput.value.trim();
+                if (!val) return;
+                if (!selectedSizes.includes(val)) {
+                  selectedSizes.push(val);
+                  selectedColors.forEach(c => removedKeys.delete(`${val}::${c.name.toLowerCase()}`));
+                }
+                ensureCombos(1);
+                render();
+                notifyTotal();
+              };
+              addSizeBtn.onclick = doAddSize;
+              customSizeInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); doAddSize(); } };
+            }
+
+            // Bind Remove color
+            mountEl.querySelectorAll('[data-vb-rm-color]').forEach(btn => {
+              btn.onclick = () => {
+                const idx = Number(btn.dataset.vbRmColor);
+                selectedColors.splice(idx, 1);
+                ensureCombos(1);
+                render();
+                notifyTotal();
+              };
+            });
+
+            // Bind Add custom color
+            const addColorBtn = mountEl.querySelector('[data-vb-add-color]');
+            const colorNameInput = mountEl.querySelector('[data-vb-color-name]');
+            const colorHexInput = mountEl.querySelector('[data-vb-color-hex]');
+            if (addColorBtn && colorNameInput && colorHexInput) {
+              const doAddColor = () => {
+                const name = colorNameInput.value.trim();
+                const hex = colorHexInput.value || '#5B1835';
+                if (!name) { toast('Please enter a colour name.'); return; }
+                if (!selectedColors.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+                  selectedColors.push({ name, hex });
+                  selectedSizes.forEach(sz => removedKeys.delete(`${sz}::${name.toLowerCase()}`));
+                  ensureCombos(1);
+                  render();
+                  notifyTotal();
+                } else {
+                  toast(`Colour "${name}" is already added.`);
+                }
+              };
+              addColorBtn.onclick = doAddColor;
+              colorNameInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); doAddColor(); } };
+            }
+
+            // Bind Color presets
+            mountEl.querySelectorAll('[data-vb-preset-name]').forEach(btn => {
+              btn.onclick = () => {
+                const name = btn.dataset.vbPresetName;
+                const hex = btn.dataset.vbPresetHex;
+                if (!selectedColors.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+                  selectedColors.push({ name, hex });
+                  selectedSizes.forEach(sz => removedKeys.delete(`${sz}::${name.toLowerCase()}`));
+                  ensureCombos(1);
+                  render();
+                  notifyTotal();
+                }
+              };
+            });
+
+            // Bind Individual Stock inputs
+            mountEl.querySelectorAll('[data-vb-qty-key]').forEach(inp => {
+              inp.oninput = () => {
+                const key = inp.dataset.vbQtyKey;
+                const v = variantMap.get(key);
+                if (v) {
+                  v.stock = Math.max(0, parseInt(inp.value, 10) || 0);
+                  const row = inp.closest('tr');
+                  const statusSpan = row?.querySelector('label span');
+                  if (statusSpan) {
+                    statusSpan.textContent = !v.isActive ? 'Disabled' : (v.stock > 0 ? 'In Stock' : 'Out of Stock');
+                    statusSpan.parentElement.style.color = v.isActive && v.stock > 0 ? '#166534' : '#991B1B';
+                  }
+                  notifyTotal();
+                }
+              };
+            });
+
+            // Bind Individual Active toggle
+            mountEl.querySelectorAll('[data-vb-active-key]').forEach(chk => {
+              chk.onchange = () => {
+                const key = chk.dataset.vbActiveKey;
+                const v = variantMap.get(key);
+                if (v) {
+                  v.isActive = chk.checked;
+                  render();
+                  notifyTotal();
+                }
+              };
+            });
+
+            // Bind Individual Variant Remove
+            mountEl.querySelectorAll('[data-vb-rm-var]').forEach(btn => {
+              btn.onclick = () => {
+                const key = btn.dataset.vbRmVar;
+                removedKeys.add(key);
+                variantMap.delete(key);
+                render();
+                notifyTotal();
+              };
+            });
+
+            // Bind Bulk Set All
+            const bulkBtn = mountEl.querySelector('[data-vb-apply-bulk]');
+            const bulkInp = mountEl.querySelector('[data-vb-bulk-qty]');
+            if (bulkBtn && bulkInp) {
+              bulkBtn.onclick = () => {
+                const val = Math.max(0, parseInt(bulkInp.value, 10) || 0);
+                for (const v of variantMap.values()) v.stock = val;
+                render();
+                notifyTotal();
+              };
+            }
+
+            // Bind Restore Removed
+            const restoreBtn = mountEl.querySelector('[data-vb-restore-all]');
+            if (restoreBtn) {
+              restoreBtn.onclick = () => {
+                removedKeys.clear();
+                ensureCombos(1);
+                render();
+                notifyTotal();
+              };
+            }
+          };
+
+          render();
+          notifyTotal();
+
+          return {
+            getState: () => ({
+              sizes: [...selectedSizes],
+              colors: selectedColors.map(c => ({ ...c })),
+              variants: getVariantsList(),
+              totalStock: computeTotalStock()
+            })
+          };
+        };
+
+        /* ==========================================================================
+           MODAL: Independent Size-Wise & Color-Wise Variant Stock Manager
+           ========================================================================== */
+        const openAdminVariantStockModal = async (product, onSaved) => {
+          if (!product) return;
+          const existing = $('#admin-variant-stock-modal');
+          if (existing) existing.remove();
+
+          let p = { ...product };
+          try {
+            const res = await fetchAuth(`/api/products/${product.id}`);
+            if (res.ok) {
+              const fresh = await res.json();
+              if (fresh && fresh.id) p = { ...p, ...fresh };
+            }
+          } catch { }
+
+          const modalHtml = `
+            <div class="admin-modal-overlay" id="admin-variant-stock-modal" style="z-index:99999">
+              <div class="admin-modal-dialog" style="max-width:740px">
+                <div class="admin-modal-head" style="background:#1E1E20;color:#FFF;border-bottom:1px solid #333">
+                  <h3 class="admin-modal-title" style="color:#FFF;font-family:var(--font-serif)">
+                    Manage Size &amp; Colour Variants — ${esc(p.name)}
+                  </h3>
+                  <button class="admin-modal-close-btn" id="btn-close-variant-modal" style="color:#FFF">&times;</button>
+                </div>
+                <div class="admin-modal-body" style="padding:1.3rem">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:1rem">
+                    <div style="display:flex;align-items:center;gap:12px">
+                      <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:40px;height:52px;object-fit:cover;border-radius:4px;border:1px solid #CBD5E1">
+                      <div>
+                        <strong style="font-size:0.94rem;color:#0F172A">${esc(p.name)}</strong>
+                        <div style="font-size:0.78rem;color:#64748B">ID #${p.id} · ${renderPublishStatusPill(p.publishStatus)}</div>
+                      </div>
+                    </div>
+                    <div style="text-align:right">
+                      <span style="font-size:0.74rem;color:#64748B;display:block">Combined Stock</span>
+                      <strong id="vm-total-stock" style="font-size:1.1rem;color:#111827">${p.stock || 0} units</strong>
+                    </div>
+                  </div>
+                  <div id="vm-builder-mount"></div>
+                  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:1.1rem;padding-top:0.9rem;border-top:1px solid #E2E8F0">
+                    <button type="button" id="btn-cancel-variant-modal" class="btn sm ghost" style="padding:7px 16px;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;background:#fff;color:#374151;font-weight:600">Cancel</button>
+                    <button type="button" id="btn-save-variant-modal" class="btn sm" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:7px 20px;font-size:13px;font-weight:600;cursor:pointer">Save Variants &amp; Stock</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+
+          const modalsRoot = $('#admin-modals-root') || document.body;
+          modalsRoot.insertAdjacentHTML('beforeend', modalHtml);
+
+          const modalEl = $('#admin-variant-stock-modal');
+          const closeVm = () => { if (modalEl) modalEl.remove(); };
+          $('#btn-close-variant-modal').onclick = closeVm;
+          $('#btn-cancel-variant-modal').onclick = closeVm;
+          modalEl.onclick = (e) => { if (e.target === modalEl) closeVm(); };
+
+          const builder = createAdminVariantBuilder($('#vm-builder-mount'), {
+            sizes: p.sizes,
+            colors: p.colors,
+            variants: p.variants
+          }, (tot) => {
+            const el = $('#vm-total-stock');
+            if (el) el.textContent = `${tot} units`;
+          });
+
+          $('#btn-save-variant-modal').onclick = async () => {
+            const saveBtn = $('#btn-save-variant-modal');
+            const state = builder.getState();
+            if (!state.variants.length) {
+              toast('Please configure at least one size and colour variant.');
+              return;
+            }
+            try {
+              saveBtn.disabled = true;
+              saveBtn.textContent = 'Saving...';
+              const res = await fetchAuth(`/api/products/${p.id}/variants/bulk`, {
+                method: 'PUT',
+                body: { variants: state.variants, replaceMissing: true }
+              });
+              const result = await res.json();
+              if (!res.ok) throw new Error(result.error || 'Failed to save variant stock.');
+
+              const pIdx = PRODUCTS.findIndex(x => Number(x.id) === Number(p.id));
+              if (pIdx !== -1) {
+                PRODUCTS[pIdx] = {
+                  ...PRODUCTS[pIdx],
+                  stock: result.totalStock,
+                  sizes: result.sizes || state.sizes,
+                  colors: result.colors || state.colors,
+                  variants: result.variants
+                };
+              }
+              toast(`Updated ${result.variants.length} variant(s) for "${p.name}" (Total stock: ${result.totalStock}).`);
+              closeVm();
+              if (onSaved) onSaved(result);
+            } catch (err) {
+              toast(err.message || 'Failed to update variants.');
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Save Variants & Stock';
+            }
+          };
+        };
+
+        /* ==========================================================================
+           MODAL: Admin Edit Product (Details, Draft Status, Variants & Stock)
+           ========================================================================== */
+        const openAdminEditProductModal = async (product, onSaved) => {
+          if (!product) return;
+          const existing = $('#admin-edit-product-modal');
+          if (existing) existing.remove();
+
+          let p = { ...product };
+          try {
+            const res = await fetchAuth(`/api/products/${product.id}`);
+            if (res.ok) {
+              const fresh = await res.json();
+              if (fresh && fresh.id) p = { ...p, ...fresh };
+            }
+          } catch (e) { }
+
+          const currentStatus = (p.publishStatus || p.publish_status || 'published').toLowerCase();
+
+          const modalHtml = `
+            <div class="admin-modal-overlay" id="admin-edit-product-modal" style="z-index:99999">
+              <div class="admin-modal-dialog" style="max-width:740px">
+                <div class="admin-modal-head" style="background:#1E1E20;color:#FFF;border-bottom:1px solid #333">
+                  <h3 class="admin-modal-title" style="color:#FFF;font-family:var(--font-serif)">
+                    <span style="font-size:1.1rem">✏️</span>
+                    Edit Garment Creation #${p.id}
+                  </h3>
+                  <button class="admin-modal-close-btn" id="btn-close-edit-product-modal" style="color:#FFF">&times;</button>
+                </div>
+                <div class="admin-modal-body" style="padding:1.4rem;max-height:80vh;overflow-y:auto">
+                  <!-- Product Summary Badge -->
+                  <div style="display:flex;align-items:center;gap:14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 14px;margin-bottom:1.2rem">
+                    <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:44px;height:58px;object-fit:cover;border-radius:4px;border:1px solid #CBD5E1">
+                    <div style="min-width:0;flex:1">
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        ${renderPublishStatusPill(currentStatus)}
+                        <span class="admin-pill sage" style="font-size:0.7rem;padding:2px 7px">${p.cat === 'ethnic' ? 'Ethnic Couture' : 'Western Pret'}</span>
+                        <span style="font-size:0.75rem;color:#64748B">${esc(p.type || 'Couture')}</span>
+                      </div>
+                      <strong style="font-size:0.95rem;color:#0F172A;display:block;margin:2px 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</strong>
+                      <div style="font-size:0.8rem;color:#475569">
+                        <span>${money(p.price)}</span>
+                        <span id="edit-modal-stock-summary" style="margin-left:8px;color:#64748B">Stock: ${p.stock || 0} units</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <form id="admin-edit-product-form" novalidate style="display:grid;grid-template-columns:1fr 1fr;gap:1.1rem">
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">
+                        Garment Name <span style="color:#DC2626">*</span>
+                      </label>
+                      <input name="name" value="${esc(p.name)}" placeholder="e.g. Royal Organza Zari Saree" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Product Status</label>
+                      <select name="publishStatus" id="edit-publish-status" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                        <option value="published" ${currentStatus === 'published' ? 'selected' : ''}>Published (Visible on Storefront)</option>
+                        <option value="draft" ${currentStatus === 'draft' ? 'selected' : ''}>Draft (Hidden from Storefront)</option>
+                        <option value="archived" ${currentStatus === 'archived' ? 'selected' : ''}>Archived (Unlisted)</option>
+                      </select>
+                    </div>
+
+                    <div style="grid-column:1/-1">
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">
+                        Garment Description
+                      </label>
+                      <textarea name="desc" rows="3" placeholder="Artisanal description of the piece, styling notes, weave details..." style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827;line-height:1.5;resize:vertical">${esc(p.desc || p.description || '')}</textarea>
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Category</label>
+                      <select name="cat" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                        <option value="ethnic" ${p.cat === 'ethnic' ? 'selected' : ''}>Ethnic Couture</option>
+                        <option value="western" ${p.cat === 'western' ? 'selected' : ''}>Western Pret</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Silhouette / Type</label>
+                      <input name="type" value="${esc(p.type || '')}" placeholder="e.g. Sarees, Suit sets, Blazers" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Collection</label>
+                      <select name="col" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                        <option value="wedding" ${p.col === 'wedding' ? 'selected' : ''}>Wedding Edit</option>
+                        <option value="festive" ${p.col === 'festive' ? 'selected' : ''}>Festive Wear</option>
+                        <option value="everyday" ${p.col === 'everyday' ? 'selected' : ''}>Everyday Cotton</option>
+                        <option value="work" ${p.col === 'work' ? 'selected' : ''}>Work Wardrobe</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Selling Price (INR)</label>
+                      <input name="price" type="number" min="0" value="${p.price || 0}" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Applicable GST Rate &amp; Tax Type</label>
+                      <select name="gstPreset" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.85rem;color:#111827">
+                        ${(() => {
+                          const opts = (window.SatinoGST && window.SatinoGST.PRODUCT_GST_OPTIONS) || [
+                            { rate: 5, type: 'auto', label: '5% GST — Auto (2.5% CGST + 2.5% SGST / 5% IGST)' },
+                            { rate: 5, type: 'cgst_sgst', label: '5% GST — CGST 2.5% + SGST 2.5%' },
+                            { rate: 5, type: 'igst', label: '5% GST — IGST 5%' },
+                            { rate: 2.5, type: 'cgst_only', label: '2.5% GST — CGST 2.5%' },
+                            { rate: 2.5, type: 'sgst_only', label: '2.5% GST — SGST 2.5%' },
+                            { rate: 2.5, type: 'auto', label: '2.5% GST — Auto (1.25% CGST + 1.25% SGST / 2.5% IGST)' },
+                            { rate: 0, type: 'exempt', label: '0% — GST Exempt' }
+                          ];
+                          const curKey = `${Number(p.gstRate ?? p.gst_rate ?? 5)}|${p.gstType || p.gst_type || 'auto'}`;
+                          return opts.map(o => {
+                            const val = `${o.rate}|${o.type}`;
+                            return `<option value="${val}" ${val === curKey ? 'selected' : ''}>${esc(o.label)}</option>`;
+                          }).join('');
+                        })()}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">HSN / SAC Code</label>
+                      <input name="hsnCode" value="${esc(p.hsnCode || p.hsn_code || '6204')}" placeholder="6204" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                    </div>
+
+                    <div style="grid-column:1/-1">
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Fabric &amp; Craft Details</label>
+                      <input name="fabric" value="${esc(p.fabric || '')}" placeholder="e.g. Pure Mulberry Silk with Antique Gold Zari" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.88rem;color:#111827">
+                    </div>
+
+                    <!-- Size & Color Variants + Stock Matrix -->
+                    <div style="grid-column:1/-1">
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">Sizes, Colours &amp; Variant Stock</label>
+                      <div id="edit-product-variant-builder"></div>
+                    </div>
+
+                    <div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:0.4rem;padding-top:1rem;border-top:1px solid #E2E8F0;flex-wrap:wrap">
+                      <button type="button" id="btn-cancel-edit-product" class="btn sm ghost" style="padding:7px 16px;border:1px solid #D1D5DB;border-radius:6px;cursor:pointer;background:#fff;color:#374151;font-weight:600">Cancel</button>
+                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button type="button" id="btn-save-edit-draft" class="btn sm ghost" style="padding:7px 16px;border:1px solid #D97706;border-radius:6px;cursor:pointer;background:#FFFBEB;color:#92400E;font-weight:600">Save as Draft</button>
+                        <button type="submit" id="btn-save-edit-product" class="btn sm" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:7px 20px;font-size:13px;font-weight:600;cursor:pointer">${currentStatus === 'draft' ? 'Save &amp; Publish' : 'Save Changes'}</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          `;
+
+          const modalsRoot = $('#admin-modals-root') || document.body;
+          modalsRoot.insertAdjacentHTML('beforeend', modalHtml);
+
+          const modalEl = $('#admin-edit-product-modal');
+          const closeModal = () => { if (modalEl) modalEl.remove(); };
+
+          $('#btn-close-edit-product-modal').onclick = closeModal;
+          $('#btn-cancel-edit-product').onclick = closeModal;
+          modalEl.onclick = (e) => { if (e.target === modalEl) closeModal(); };
+
+          const editVariantBuilder = createAdminVariantBuilder($('#edit-product-variant-builder'), {
+            sizes: p.sizes,
+            colors: p.colors,
+            variants: p.variants
+          }, (tot) => {
+            const sumEl = $('#edit-modal-stock-summary');
+            if (sumEl) sumEl.textContent = `Stock: ${tot} units`;
+          });
+
+          const submitEditProduct = async (overrideStatus = null) => {
+            const form = $('#admin-edit-product-form');
+            const submitBtn = $('#btn-save-edit-product');
+            const draftBtn = $('#btn-save-edit-draft');
+            const fd = new FormData(form);
+            const data = Object.fromEntries(fd);
+            const targetStatus = overrideStatus || data.publishStatus || currentStatus;
+
+            if (targetStatus === 'published') {
+              if (!data.name || !data.name.trim() || data.name.trim() === 'Untitled Draft') {
+                toast('Please enter a garment name before publishing (or click Save as Draft).');
+                return;
+              }
+              if (!data.price || Number(data.price) <= 0) {
+                toast('Please enter a valid selling price greater than ₹0 before publishing (or click Save as Draft).');
+                return;
+              }
+            }
+
+            const vbState = editVariantBuilder ? editVariantBuilder.getState() : null;
+            data.description = data.desc;
+            data.price = data.price !== '' ? Number(data.price) : 0;
+            data.publishStatus = targetStatus;
+            if (data.gstPreset && data.gstPreset.includes('|')) {
+              const [rStr, tStr] = data.gstPreset.split('|');
+              data.gstRate = Number(rStr);
+              data.gstType = tStr;
+              delete data.gstPreset;
+            }
+            if (vbState) {
+              data.sizes = vbState.sizes;
+              data.colors = vbState.colors;
+              data.variants = vbState.variants;
+              data.stock = vbState.totalStock;
+            }
+
+            try {
+              if (submitBtn) submitBtn.disabled = true;
+              if (draftBtn) draftBtn.disabled = true;
+              const res = await fetchAuth(`/api/products/${p.id}`, {
+                method: 'PUT',
+                body: data
+              });
+              const updatedP = await res.json();
+              if (!res.ok) throw new Error(updatedP.error || 'Failed to update garment creation');
+
+              // Sync local storefront cache (only keep published products in storefront PRODUCTS)
+              const pIdx = PRODUCTS.findIndex(x => Number(x.id) === Number(p.id));
+              if (updatedP.publishStatus === 'published') {
+                if (pIdx !== -1) PRODUCTS[pIdx] = { ...PRODUCTS[pIdx], ...updatedP };
+                else PRODUCTS.push(updatedP);
+              } else if (pIdx !== -1) {
+                PRODUCTS.splice(pIdx, 1);
+              }
+
+              toast(targetStatus === 'draft'
+                ? `Draft "${updatedP.name}" saved successfully.`
+                : `Garment "${updatedP.name}" updated (${updatedP.publishStatus})!`);
+              closeModal();
+              if (onSaved) onSaved(updatedP);
+            } catch (err) {
+              toast(err.message || 'Could not update garment.');
+              if (submitBtn) submitBtn.disabled = false;
+              if (draftBtn) draftBtn.disabled = false;
+            }
+          };
+
+          $('#btn-save-edit-draft').onclick = () => submitEditProduct('draft');
+          $('#admin-edit-product-form').onsubmit = (e) => {
+            e.preventDefault();
+            const chosenStatus = $('#edit-publish-status')?.value || 'published';
+            // If currently editing a draft and user clicks "Save & Publish" without switching dropdown, publish it
+            const finalStatus = (currentStatus === 'draft' && chosenStatus === 'draft') ? 'published' : chosenStatus;
+            submitEditProduct(finalStatus);
+          };
+        };
 
         /* ============================================================
            SATINOSTITCH Business System: Invoices, Customers & Support Modals
@@ -5931,44 +7456,147 @@
           return 'Rupees ' + words.trim() + ' Only';
         }
 
-        function openInvoiceModal(order) {
-          if (!order) return;
+        async function downloadOrderInvoicePdf(orderId, triggerBtn = null) {
+          if (!orderId) return;
+          const origHtml = triggerBtn ? triggerBtn.innerHTML : null;
+          if (triggerBtn) {
+            triggerBtn.disabled = true;
+            triggerBtn.textContent = 'Generating PDF...';
+          }
+          try {
+            const res = await fetchAuth(`/api/admin/orders/${encodeURIComponent(orderId)}/invoice-pdf`, {
+              method: 'GET'
+            });
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || 'Failed to generate invoice PDF.');
+            }
+            const blob = await res.blob();
+            const cd = res.headers.get('Content-Disposition') || '';
+            const match = cd.match(/filename="?([^";]+)"?/i);
+            const filename = match && match[1] ? match[1] : `SATINOSTITCH_INV_${String(orderId).replace(/[^A-Za-z0-9_-]/g, '')}.pdf`;
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+            toast(`Invoice ${filename} downloaded.`);
+          } catch (err) {
+            toast(err.message || 'Could not download invoice PDF.');
+          } finally {
+            if (triggerBtn) {
+              triggerBtn.disabled = false;
+              triggerBtn.innerHTML = origHtml;
+            }
+          }
+        }
+
+        async function openInvoiceModal(order) {
+          if (!order || !order.id) return;
           const existing = $('#admin-invoice-modal');
           if (existing) existing.remove();
 
-          const subtotal = Number(order.subtotal || order.total || 0);
-          const discount = Number(order.discount || 0);
-          const netTaxable = Math.max(0, subtotal - discount);
-          const cgst = Math.round(netTaxable * 0.025);
-          const sgst = Math.round(netTaxable * 0.025);
-          const shippingFee = Number(order.shipping_fee !== undefined ? order.shipping_fee : (netTaxable >= 3000 ? 0 : 150));
-          const grandTotal = Number(order.total || (netTaxable + cgst + sgst + shippingFee));
-
-          let addr = {};
+          // Fetch authoritative single-order invoice payload (persistent invoice number, enriched items, GST, company details)
+          let inv = null;
           try {
-            addr = typeof order.shipping_address === 'string' ? JSON.parse(order.shipping_address) : (order.shipping_address || {});
-          } catch (e) { addr = {}; }
+            const res = await fetchAuth(`/api/admin/orders/${encodeURIComponent(order.id)}/invoice`);
+            if (res.ok) inv = await res.json();
+          } catch { /* fallback below */ }
 
-          const orderDate = new Date(order.created_at || Date.now());
-          const dateStr = orderDate.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
-          const invoiceNo = `INV-${orderDate.getFullYear()}-${order.id}`;
+          if (!inv) {
+            let addr = {};
+            try { addr = typeof order.shipping_address === 'string' ? JSON.parse(order.shipping_address) : (order.shipping_address || {}); } catch { addr = {}; }
+            const orderDate = new Date(order.created_at || Date.now());
+            const fallbackSubtotal = Number(order.subtotal || order.total || 0);
+            const fallbackDiscount = Number(order.discount || 0);
+            const fallbackShipping = Number(order.shipping_fee || 0);
+            const fallbackTotal = Number(order.total || 0);
+            inv = {
+              invoiceNumber: `INV-${order.id}`,
+              filename: `SATINOSTITCH_INV_${order.id}.pdf`,
+              invoiceDateFormatted: orderDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
+              orderId: order.id,
+              trackingNumber: order.tracking_number || `IND-COUT-${order.id}`,
+              orderStatus: order.status || 'Confirmed',
+              paymentMethod: String(order.payment_method || 'COD').toUpperCase(),
+              paymentStatus: String(order.payment_status || 'pending').toUpperCase(),
+              company: {
+                brandName: 'SATINOSTITCH',
+                legalName: 'SATINOSTITCH ATELIER LUXE PVT LTD',
+                tagline: 'Haute Couture Ethnic & Sartorial Pret',
+                address: 'Atelier SatinoStitch, 14 Kala Ghoda Arts Precinct, Mumbai 400001',
+                phone: SUPPORT_CONFIG.phone,
+                email: SUPPORT_CONFIG.email,
+                supportHours: SUPPORT_CONFIG.hours,
+                gstin: ACTIVE_GST_CONFIG.gstin || '24AAECS1234P1Z8',
+                state: ACTIVE_GST_CONFIG.sellerState || 'Gujarat',
+                stateCode: ACTIVE_GST_CONFIG.sellerStateCode || '24'
+              },
+              customer: {
+                name: order.customer_name || 'VIP Patron',
+                email: order.customer_email || '',
+                phone: order.customer_phone || '',
+                gstin: null,
+                billingAddressLines: [addr.line1 || addr.address, [addr.city, addr.state].filter(Boolean).join(', ')].filter(Boolean),
+                shippingAddressLines: [addr.line1 || addr.address, [addr.city, addr.state].filter(Boolean).join(', ')].filter(Boolean),
+                hasDifferentShippingAddress: false
+              },
+              items: (Array.isArray(order.items) ? order.items : []).map((it, idx) => ({
+                serial: idx + 1,
+                name: it.name || it.product_name || 'Artisanal Creation',
+                description: '',
+                sku: `SS-${String(it.product_id || it.productId || 0).padStart(3, '0')}-${String(it.size || 'STD').toUpperCase()}`,
+                hsnCode: it.hsnCode || it.hsn_code || '6204',
+                size: it.size || 'Standard',
+                color: it.color || 'Standard',
+                quantity: Number(it.quantity || it.qty || 1),
+                originalUnitPrice: Number(it.price || 0),
+                unitPrice: Number(it.price || 0),
+                discount: 0,
+                gstRate: Number(it.gstRate ?? it.gst_rate ?? 5),
+                lineTotal: Number(it.total || (Number(it.price || 0) * Number(it.quantity || 1)))
+              })),
+              summary: {
+                subtotal: fallbackSubtotal,
+                productDiscount: 0,
+                privilegeDiscount: fallbackDiscount,
+                couponCode: order.coupon_code || null,
+                netTaxableAmount: Number(order.taxable_amount || Math.max(0, fallbackSubtotal - fallbackDiscount)),
+                cgstAmount: Number(order.cgst_amount || 0),
+                sgstAmount: Number(order.sgst_amount || 0),
+                igstAmount: Number(order.igst_amount || 0),
+                cgstLabel: 'Central GST (CGST 2.5%)',
+                sgstLabel: 'State GST (SGST 2.5%)',
+                igstLabel: 'Integrated GST (IGST 5%)',
+                totalGst: Number(order.total_gst || 0),
+                shippingFee: fallbackShipping,
+                additionalCharges: 0,
+                finalAmount: fallbackTotal,
+                amountInWords: numberToWordsINR(fallbackTotal),
+                placeOfSupply: addr.state || ACTIVE_GST_CONFIG.sellerState || 'Gujarat',
+                supplyType: Number(order.igst_amount || 0) > 0 ? 'Inter-State (IGST)' : 'Intra-State (CGST + SGST)',
+                pricingMode: order.gst_pricing_mode === 'exclusive' ? 'Tax-Exclusive' : 'Tax-Inclusive MRP'
+              }
+            };
+          }
 
-          const items = Array.isArray(order.items) && order.items.length > 0 ? order.items : [
-            { name: 'Haute Couture Ensemble', qty: 1, price: grandTotal, size: 'Bespoke', color: 'Royal' }
-          ];
-
+          const s = inv.summary;
           const modalHtml = `
             <div class="admin-modal-overlay" id="admin-invoice-modal">
-              <div class="admin-modal-dialog" style="max-width:840px">
+              <div class="admin-modal-dialog" style="max-width:940px">
                 <div class="admin-modal-head">
                   <h3 class="admin-modal-title">
                     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    Tax Invoice #${invoiceNo}
+                    Tax Invoice ${esc(inv.invoiceNumber)} &middot; Order #${esc(inv.orderId)}
                   </h3>
                   <div style="display:flex;gap:8px;align-items:center">
                     <button class="btn sm" id="btn-do-print" style="background:#4F46E5;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
-                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                      Print / Download PDF
+                      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Download Invoice PDF
                     </button>
                     <button class="admin-modal-close-btn" id="btn-close-invoice-modal">&times;</button>
                   </div>
@@ -5977,124 +7605,165 @@
                   <div class="admin-invoice-box">
                     <div class="invoice-brand-row">
                       <div class="invoice-brand-left">
-                        <img src="images/emblem.png" alt="SATINOSTITCH" class="invoice-emblem">
+                        <div style="width:52px;height:52px;border-radius:6px;background:#1F1B18;border:1px solid #A68243;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                          <img src="images/emblem-gold.png" alt="SATINOSTITCH" style="width:38px;height:36px;object-fit:contain">
+                        </div>
                         <div>
-                          <div class="invoice-wordmark">SATINOSTITCH</div>
-                          <div class="invoice-tagline">Haute Couture Ethnic &amp; Sartorial Pret</div>
-                          <div style="font-size:11px;color:#64748B;margin-top:4px">SATINOSTITCH ATELIER LUXE PVT LTD</div>
-                          <div style="font-size:11px;color:#64748B">Ring Road Textile District, Surat, Gujarat 395002</div>
-                          <div style="font-size:11px;color:#0F172A;font-weight:600;margin-top:2px">GSTIN: 24AAECS1234P1Z8 &middot; State: Gujarat (24)</div>
+                          <div class="invoice-wordmark">${esc(inv.company.brandName)}</div>
+                          <div style="font-size:12px;color:#0F172A;font-weight:700;margin-top:2px">${esc(inv.company.legalName)}</div>
+                          <div style="font-size:11px;color:#64748B;margin-top:2px">${esc(inv.company.address)}</div>
+                          <div style="font-size:11px;color:#475569;margin-top:2px">Phone: ${esc(inv.company.phone)} &middot; Email: ${esc(inv.company.email)}</div>
+                          <div style="font-size:11px;color:#0F172A;font-weight:600;margin-top:2px">GSTIN: ${esc(inv.company.gstin)} &middot; State: ${esc(inv.company.state)} (${esc(inv.company.stateCode)})</div>
                         </div>
                       </div>
                       <div class="invoice-brand-right">
                         <span class="invoice-badge-title">TAX INVOICE</span>
-                        <div><strong>Invoice No:</strong> ${invoiceNo}</div>
-                        <div><strong>Invoice Date:</strong> ${dateStr}</div>
-                        <div><strong>Order Ref:</strong> #${order.id}</div>
-                        <div><strong>Courier AWB:</strong> ${order.tracking_number || ('IND-COUT-' + order.id)}</div>
-                        <div style="margin-top:4px"><strong>Place of Supply:</strong> ${esc(addr.state || 'Gujarat')}</div>
+                        <div><strong>Invoice No:</strong> ${esc(inv.invoiceNumber)}</div>
+                        <div><strong>Invoice Date:</strong> ${esc(inv.invoiceDateFormatted)}</div>
+                        <div><strong>Order ID:</strong> #${esc(inv.orderId)}</div>
+                        <div><strong>Place of Supply:</strong> ${esc(s.placeOfSupply)}</div>
+                        <div style="margin-top:3px;font-size:11px;color:#64748B">${esc(s.supplyType)} &middot; ${esc(s.pricingMode)}</div>
                       </div>
                     </div>
 
                     <div class="invoice-meta-grid">
                       <div class="invoice-meta-col">
-                        <h4>Billed &amp; Shipped To:</h4>
-                        <div style="font-size:14px;font-weight:700;color:#0F172A;margin-bottom:4px">${esc(order.customer_name || 'VIP Patron')}</div>
-                        <div style="font-size:12px;color:#475569;line-height:1.4">
-                          ${esc(addr.line1 || addr.address || 'Flagship Atelier Delivery')}<br>
-                          ${addr.line2 ? esc(addr.line2) + '<br>' : ''}
-                          ${esc(addr.city || 'Surat')}, ${esc(addr.state || 'Gujarat')} - ${esc(addr.pincode || addr.pin || '395002')}<br>
-                          <strong>Contact:</strong> ${esc(order.customer_phone || '—')}<br>
-                          <strong>Email:</strong> ${esc(order.customer_email || '—')}
+                        <h4>Billed To (Customer Details):</h4>
+                        <div style="font-size:14px;font-weight:700;color:#0F172A;margin-bottom:4px">${esc(inv.customer.name)}</div>
+                        <div style="font-size:12px;color:#475569;line-height:1.45">
+                          ${inv.customer.billingAddressLines.map(l => esc(l)).join('<br>') || 'Address on file'}<br>
+                          ${inv.customer.phone ? `<strong>Phone:</strong> ${esc(inv.customer.phone)}<br>` : ''}
+                          ${inv.customer.email ? `<strong>Email:</strong> ${esc(inv.customer.email)}<br>` : ''}
+                          ${inv.customer.gstin ? `<strong>Customer GSTIN:</strong> ${esc(inv.customer.gstin)}` : ''}
                         </div>
                       </div>
                       <div class="invoice-meta-col">
-                        <h4>Payment &amp; Fulfillment:</h4>
-                        <div style="font-size:12px;color:#475569;line-height:1.6">
-                          <div><strong>Payment Method:</strong> ${(order.payment_method || 'COD').toUpperCase()}</div>
-                          <div><strong>Payment Status:</strong> <span class="order-status-pill ${order.payment_status === 'paid' ? 'paid' : 'pending'}">${(order.payment_status || 'Pending').toUpperCase()}</span></div>
-                          <div><strong>Dispatch Status:</strong> ${esc(order.status || 'Confirmed')}</div>
-                          <div><strong>Courier Carrier:</strong> BlueDart Apex Luxury Logistics</div>
+                        <h4>${inv.customer.hasDifferentShippingAddress ? 'Shipped To (Different Address):' : 'Shipping &amp; Payment Details:'}</h4>
+                        <div style="font-size:12px;color:#475569;line-height:1.5">
+                          ${inv.customer.hasDifferentShippingAddress
+                            ? `${inv.customer.shippingAddressLines.map(l => esc(l)).join('<br>')}<br><br>`
+                            : `<div style="font-style:italic;color:#64748B;margin-bottom:4px">Same as Billing Address</div>`}
+                          <div><strong>Payment Method:</strong> ${esc(inv.paymentMethod)}</div>
+                          <div><strong>Payment Status:</strong> <span class="order-status-pill ${inv.paymentStatus === 'PAID' ? 'paid' : 'pending'}">${esc(inv.paymentStatus)}</span></div>
+                          <div><strong>Courier AWB:</strong> ${esc(inv.trackingNumber)}</div>
+                          <div><strong>Order Status:</strong> ${esc(inv.orderStatus)}</div>
                         </div>
                       </div>
                     </div>
 
-                    <table class="invoice-table">
-                      <thead>
-                        <tr>
-                          <th style="width:5%">#</th>
-                          <th style="width:45%">Creations / Description</th>
-                          <th style="width:12%">HSN / SAC</th>
-                          <th style="width:10%;text-align:center">Qty</th>
-                          <th style="width:14%;text-align:right">Rate</th>
-                          <th style="width:14%;text-align:right">Taxable Amt</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${items.map((it, idx) => `
+                    <div style="overflow-x:auto">
+                      <table class="invoice-table">
+                        <thead>
                           <tr>
-                            <td>${idx + 1}</td>
-                            <td>
-                              <strong>${esc(it.name || it.product_name || 'Artisanal Creation')}</strong>
-                              <div style="font-size:11px;color:#64748B">Size: ${esc(it.size || 'M')}${it.color ? ' &middot; Shade: ' + esc(it.color) : ''}</div>
-                            </td>
-                            <td>6204</td>
-                            <td style="text-align:center">${it.quantity || it.qty || 1}</td>
-                            <td style="text-align:right">${money(it.price || 0)}</td>
-                            <td style="text-align:right"><strong>${money((it.price || 0) * (it.quantity || it.qty || 1))}</strong></td>
+                            <th style="width:4%">#</th>
+                            <th style="width:27%">Product &amp; Description</th>
+                            <th style="width:12%">SKU</th>
+                            <th style="width:7%;text-align:center">Size</th>
+                            <th style="width:10%">Color</th>
+                            <th style="width:5%;text-align:center">Qty</th>
+                            <th style="width:10%;text-align:right">Unit Price</th>
+                            <th style="width:8%;text-align:right">Disc.</th>
+                            <th style="width:6%;text-align:center">GST</th>
+                            <th style="width:11%;text-align:right">Amount</th>
                           </tr>
-                        `).join('')}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          ${inv.items.map(it => `
+                            <tr>
+                              <td>${it.serial}</td>
+                              <td>
+                                <strong>${esc(it.name)}</strong>
+                                <div style="font-size:11px;color:#64748B">${it.description ? esc(it.description) + ' &middot; ' : ''}HSN: ${esc(it.hsnCode)}</div>
+                              </td>
+                              <td style="font-size:11px;font-family:monospace">${esc(it.sku)}</td>
+                              <td style="text-align:center">${esc(it.size)}</td>
+                              <td>${esc(it.color)}</td>
+                              <td style="text-align:center">${it.quantity}</td>
+                              <td style="text-align:right">${moneyExact(it.originalUnitPrice > it.unitPrice ? it.originalUnitPrice : it.unitPrice)}</td>
+                              <td style="text-align:right;color:${it.discount > 0 ? '#166534' : '#94A3B8'}">${it.discount > 0 ? '-' + moneyExact(it.discount) : '—'}</td>
+                              <td style="text-align:center">${it.gstRate}%</td>
+                              <td style="text-align:right"><strong>${moneyExact(it.lineTotal)}</strong></td>
+                            </tr>
+                          `).join('')}
+                        </tbody>
+                      </table>
+                    </div>
 
                     <div class="invoice-summary-box">
                       <table class="invoice-summary-table">
                         <tr>
                           <td style="color:#64748B">Subtotal:</td>
-                          <td style="text-align:right;font-weight:600">${money(subtotal)}</td>
+                          <td style="text-align:right;font-weight:600">${moneyExact(s.subtotal)}</td>
                         </tr>
-                        ${discount > 0 ? `
+                        ${s.productDiscount > 0 ? `
                           <tr>
-                            <td style="color:#166534">Privilege Discount:</td>
-                            <td style="text-align:right;color:#166534;font-weight:600">- ${money(discount)}</td>
+                            <td style="color:#166534">Product Discount:</td>
+                            <td style="text-align:right;color:#166534;font-weight:600">- ${moneyExact(s.productDiscount)}</td>
+                          </tr>
+                        ` : ''}
+                        ${s.privilegeDiscount > 0 ? `
+                          <tr>
+                            <td style="color:#166534">Privilege Discount${s.couponCode ? ' (' + esc(s.couponCode) + ')' : ''}:</td>
+                            <td style="text-align:right;color:#166534;font-weight:600">- ${moneyExact(s.privilegeDiscount)}</td>
                           </tr>
                         ` : ''}
                         <tr>
-                          <td style="color:#64748B">Net Taxable Value:</td>
-                          <td style="text-align:right;font-weight:600">${money(netTaxable)}</td>
+                          <td style="color:#334155;font-weight:600">${(s.productDiscount > 0 || s.privilegeDiscount > 0) ? 'Taxable Amount (After Discount):' : 'Net Taxable Amount:'}</td>
+                          <td style="text-align:right;font-weight:600">${moneyExact(s.netTaxableAmount)}</td>
+                        </tr>
+                        ${s.cgstAmount > 0 ? `
+                          <tr>
+                            <td style="color:#64748B">${esc(s.cgstLabel)}:</td>
+                            <td style="text-align:right">${moneyExact(s.cgstAmount)}</td>
+                          </tr>
+                        ` : ''}
+                        ${s.sgstAmount > 0 ? `
+                          <tr>
+                            <td style="color:#64748B">${esc(s.sgstLabel)}:</td>
+                            <td style="text-align:right">${moneyExact(s.sgstAmount)}</td>
+                          </tr>
+                        ` : ''}
+                        ${s.igstAmount > 0 ? `
+                          <tr>
+                            <td style="color:#64748B">${esc(s.igstLabel)}:</td>
+                            <td style="text-align:right">${moneyExact(s.igstAmount)}</td>
+                          </tr>
+                        ` : ''}
+                        <tr>
+                          <td style="color:#334155;font-weight:600">Total GST:</td>
+                          <td style="text-align:right;font-weight:600">${moneyExact(s.totalGst)}</td>
                         </tr>
                         <tr>
-                          <td style="color:#64748B">Central GST (CGST 2.5%):</td>
-                          <td style="text-align:right">${money(cgst)}</td>
+                          <td style="color:#64748B">Shipping Charges:</td>
+                          <td style="text-align:right">${s.shippingFee === 0 ? '<span style="color:#15803D;font-weight:600">FREE</span>' : moneyExact(s.shippingFee)}</td>
                         </tr>
-                        <tr>
-                          <td style="color:#64748B">State GST (SGST 2.5%):</td>
-                          <td style="text-align:right">${money(sgst)}</td>
-                        </tr>
-                        <tr>
-                          <td style="color:#64748B">Insured Express Shipping:</td>
-                          <td style="text-align:right">${shippingFee === 0 ? '<span style="color:#15803D;font-weight:600">FREE</span>' : money(shippingFee)}</td>
-                        </tr>
+                        ${s.additionalCharges > 0 ? `
+                          <tr>
+                            <td style="color:#64748B">Additional Charges:</td>
+                            <td style="text-align:right">${moneyExact(s.additionalCharges)}</td>
+                          </tr>
+                        ` : ''}
                         <tr class="total-row">
-                          <td>Total Invoice Amount:</td>
-                          <td style="text-align:right;color:#0F172A">${money(grandTotal)}</td>
+                          <td>Final Invoice Amount:</td>
+                          <td style="text-align:right;color:#0F172A">${moneyExact(s.finalAmount)}</td>
                         </tr>
                       </table>
                     </div>
 
                     <div style="margin-top:16px;padding:12px;background:#F8FAFC;border-radius:6px;font-size:12px;border:1px solid #E2E8F0">
-                      <strong>Amount in Words:</strong> <em>${numberToWordsINR(grandTotal)}</em>
+                      <strong>Amount in Words:</strong> <em>${esc(s.amountInWords)}</em>
                     </div>
 
                     <div class="invoice-footer-notes">
                       <div>
-                        <div><strong>Terms &amp; Conditions:</strong></div>
+                        <div><strong>Terms, Conditions &amp; Return Policy:</strong></div>
                         <div>1. Certified authentic SATINOSTITCH handloom &amp; couture garment.</div>
-                        <div>2. Exchanges accepted within 7 days with intact luxury security tags.</div>
-                        <div>3. Subject to Surat, Gujarat jurisdiction.</div>
+                        <div>2. Returns &amp; exchanges accepted within 7 days of delivery with original tags intact.</div>
+                        <div>3. Support: ${esc(inv.company.phone)} &middot; ${esc(inv.company.email)} (${esc(inv.company.supportHours)}).</div>
+                        <div>4. Subject to ${esc(inv.company.state)} jurisdiction.</div>
                       </div>
                       <div style="text-align:right">
-                        <div style="font-weight:700;color:#0F172A;margin-bottom:32px">For SATINOSTITCH ATELIER LUXE PVT LTD</div>
+                        <div style="font-weight:700;color:#0F172A;margin-bottom:32px">For ${esc(inv.company.legalName)}</div>
                         <div style="border-top:1px solid #94A3B8;padding-top:4px;font-size:11px;font-weight:600;color:#334155">Authorized Signatory</div>
                       </div>
                     </div>
@@ -6108,7 +7777,7 @@
           const modal = $('#admin-invoice-modal');
 
           $('#btn-close-invoice-modal').onclick = () => modal.remove();
-          $('#btn-do-print').onclick = () => window.print();
+          $('#btn-do-print').onclick = (e) => downloadOrderInvoicePdf(inv.orderId, e.currentTarget);
           modal.onclick = (e) => {
             if (e.target === modal) modal.remove();
           };
@@ -6229,7 +7898,7 @@
                 try {
                   const ord = JSON.parse(b.dataset.orderJson);
                   openInvoiceModal(ord);
-                } catch (e) {}
+                } catch (e) { }
               };
             });
 
@@ -6517,7 +8186,7 @@
                     const emailMatch = String(o.customer_email || '').toLowerCase().includes(q);
                     const phoneMatch = String(o.customer_phone || '').includes(qNoHash);
                     const trackingMatch = String(o.tracking_number || '').toLowerCase().includes(qNoHash);
-                    const skuMatch = (o.items || []).some(it => 
+                    const skuMatch = (o.items || []).some(it =>
                       String(it.productId || it.id || '').toLowerCase().includes(qNoHash) ||
                       String(it.name || '').toLowerCase().includes(q)
                     );
@@ -6649,12 +8318,12 @@
                         </thead>
                         <tbody>
                           ${filtered.map(o => {
-                            const pillCls = o.status === 'Confirmed' ? 'confirmed' :
-                              o.status === 'In Atelier' ? 'atelier' :
-                              o.status === 'Dispatched' ? 'dispatched' :
-                              o.status === 'Delivered' ? 'delivered' :
-                              o.status === 'Cancelled' ? 'cancelled' : 'pending';
-                            return `
+                  const pillCls = o.status === 'Confirmed' ? 'confirmed' :
+                    o.status === 'In Atelier' ? 'atelier' :
+                      o.status === 'Dispatched' ? 'dispatched' :
+                        o.status === 'Delivered' ? 'delivered' :
+                          o.status === 'Cancelled' ? 'cancelled' : 'pending';
+                  return `
                               <tr>
                                 <td>
                                   <strong style="color:#111827;font-size:0.92rem">#${esc(o.id)}</strong>
@@ -6684,32 +8353,32 @@
                                 </td>
                                 <td>
                                   ${(() => {
-                                    const score = o.fraud_score || 0;
-                                    const risk = o.risk_level || (score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low');
-                                    if (risk === 'high') {
-                                      return `
+                      const score = o.fraud_score || 0;
+                      const risk = o.risk_level || (score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low');
+                      if (risk === 'high') {
+                        return `
                                         <div style="display:inline-flex;align-items:center;gap:4px;background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;padding:3px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">
                                           <span>🚨 High Risk</span>
                                           <span style="opacity:0.85">(${score}/100)</span>
                                         </div>
                                         <div style="font-size:0.7rem;color:#DC2626;margin-top:2px">${(o.fraud_flags && o.fraud_flags[0]) ? esc(String(o.fraud_flags[0]).replace(/_/g, ' ')) : 'Manual verify'}</div>
                                       `;
-                                    } else if (risk === 'medium') {
-                                      return `
+                      } else if (risk === 'medium') {
+                        return `
                                         <div style="display:inline-flex;align-items:center;gap:4px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:3px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">
                                           <span>⚠️ Flagged</span>
                                           <span style="opacity:0.85">(${score}/100)</span>
                                         </div>
                                       `;
-                                    } else {
-                                      return `
+                      } else {
+                        return `
                                         <div style="display:inline-flex;align-items:center;gap:4px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;padding:3px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">
                                           <span>🛡️ Safe</span>
                                           <span style="opacity:0.85">(${score})</span>
                                         </div>
                                       `;
-                                    }
-                                  })()}
+                      }
+                    })()}
                                 </td>
                                 <td>
                                   <div style="display:flex;align-items:center;gap:0.4rem">
@@ -6724,15 +8393,19 @@
                                 <td>
                                   <div style="display:flex;gap:0.4rem;align-items:center">
                                     <button class="save-status-btn" data-order-id="${o.id}">Update</button>
-                                    <button class="print-order-invoice-btn" data-order-id="${o.id}" title="Print GST Tax Invoice">
+                                    <button class="print-order-invoice-btn" data-order-id="${o.id}" title="Preview Tax Invoice">
                                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                                       <span>Invoice</span>
+                                    </button>
+                                    <button class="download-order-invoice-btn" data-order-id="${o.id}" title="Download Individual Invoice PDF" style="background:#FFFFFF;border:1px solid #CBD5E1;color:#334155;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                      <span>PDF</span>
                                     </button>
                                   </div>
                                 </td>
                               </tr>
                             `;
-                          }).join('')}
+                }).join('')}
                         </tbody>
                       </table>
                     </div>
@@ -6761,13 +8434,18 @@
                   };
                 });
 
-                // Event Delegate: Print invoice
+                // Event Delegate: Preview invoice
                 $$('.print-order-invoice-btn').forEach(btn => {
                   btn.onclick = () => {
                     const oid = btn.dataset.orderId;
                     const oObj = orderList.find(o => String(o.id) === String(oid));
                     if (oObj) openInvoiceModal(oObj);
                   };
+                });
+
+                // Event Delegate: Direct Download Individual Invoice PDF
+                $$('.download-order-invoice-btn').forEach(btn => {
+                  btn.onclick = () => downloadOrderInvoicePdf(btn.dataset.orderId, btn);
                 });
 
                 // Event Delegate: Mark paid
@@ -7125,14 +8803,14 @@
 
                       <!-- Data Points & X-Axis Labels -->
                       ${points.map((pt, i) => {
-                        const showLabel = n <= 8 || i % Math.ceil(n / 7) === 0 || i === n - 1;
-                        return `
+                const showLabel = n <= 8 || i % Math.ceil(n / 7) === 0 || i === n - 1;
+                return `
                           <circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4.5" fill="#FFFFFF" stroke="#4F46E5" stroke-width="2.5" class="chart-data-dot" data-idx="${i}" style="cursor:pointer"></circle>
                           ${showLabel ? `
                             <text x="${pt.x.toFixed(1)}" y="${svgH - 12}" fill="#64748B" font-size="11" text-anchor="middle" font-family="'Inter', sans-serif">${pt.label}</text>
                           ` : ''}
                         `;
-                      }).join('')}
+              }).join('')}
                     </svg>
 
                     <!-- Interactive Hover Tooltip Box -->
@@ -7212,12 +8890,12 @@
                         </thead>
                         <tbody>
                           ${recentOrders.length ? recentOrders.map(o => {
-                            const status = o.status || 'Confirmed';
-                            const statusClass = status.toLowerCase().replace(/\s+/g, '-');
-                            const items = Array.isArray(o.items) ? o.items : [];
-                            const itemsCount = items.length || 1;
-                            const dateStr = new Date(o.created_at || Date.now()).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
-                            return `
+                const status = o.status || 'Confirmed';
+                const statusClass = status.toLowerCase().replace(/\s+/g, '-');
+                const items = Array.isArray(o.items) ? o.items : [];
+                const itemsCount = items.length || 1;
+                const dateStr = new Date(o.created_at || Date.now()).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+                return `
                               <tr>
                                 <td><strong style="color:#0F172A">#${o.id}</strong></td>
                                 <td>
@@ -7233,7 +8911,7 @@
                                 </td>
                               </tr>
                             `;
-                          }).join('') : '<tr><td colspan="7" style="text-align:center;padding:1.5rem;color:#64748B">No orders recorded yet.</td></tr>'}
+              }).join('') : '<tr><td colspan="7" style="text-align:center;padding:1.5rem;color:#64748B">No orders recorded yet.</td></tr>'}
                         </tbody>
                       </table>
                     </div>
@@ -7402,7 +9080,7 @@
                       });
                     }
                     if (!r.ok) throw new Error((await r.json()).error);
-                    toast(`Stock replenished (+${add} units) in PostgreSQL.`);
+                    toast(`Stock replenished (+${add} units) in Inventory.`);
                     renderTab('overview', true);
                   } catch (e) {
                     toast(e.message || 'Could not update stock.');
@@ -7661,9 +9339,9 @@
 
                         <!-- X Axis Labels -->
                         ${currentData.labels.map((lbl, idx) => {
-                          const x = paddingX + (idx / (currentData.labels.length - 1)) * plotW;
-                          return `<text x="${x}" y="${chartHeight - 6}" font-size="11" font-family="Inter, sans-serif" font-weight="500" fill="#64748B" text-anchor="middle">${lbl}</text>`;
-                        }).join('')}
+                  const x = paddingX + (idx / (currentData.labels.length - 1)) * plotW;
+                  return `<text x="${x}" y="${chartHeight - 6}" font-size="11" font-family="Inter, sans-serif" font-weight="500" fill="#64748B" text-anchor="middle">${lbl}</text>`;
+                }).join('')}
                       </svg>
                     </div>
                   </div>
@@ -7781,163 +9459,1022 @@
               toast('Campaign creator launched.');
             });
           }
-else if (tabName === 'returns') {
-            container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading returns &amp; cancellations...</p>';
+          /* ==========================================================================
+             TAB: Return Management System (Admin Return Requests & Resolution Desk)
+             ========================================================================== */
+          else if (tabName === 'returns') {
+            container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading customer return requests...</p>';
             try {
-              const res = await fetchAuth('/api/admin/orders');
-              const allOrders = await res.json();
-              const returnOrders = (Array.isArray(allOrders) ? allOrders : []).filter(o => o.status === 'Cancelled' || o.cancel_reason || o.return_reason);
+              const res = await fetchAuth('/api/admin/returns');
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'Could not load return requests');
 
-              container.innerHTML = `
-                <div class="admin-surface-card">
-                  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.4rem;color:#111827">Returns &amp; Cancellations (${returnOrders.length})</h2>
-                  <p class="muted" style="margin-bottom:1.4rem">Audit patron cancellations, reverse logistics, and return resolutions.</p>
+              let returnList = Array.isArray(data.returns) ? data.returns : [];
+              let stats = data.stats || {
+                total: returnList.length,
+                pending: returnList.filter(r => r.status === 'Pending').length,
+                approved: returnList.filter(r => r.status === 'Approved').length,
+                processing: returnList.filter(r => r.status === 'Processing').length,
+                completed: returnList.filter(r => r.status === 'Completed').length,
+                rejected: returnList.filter(r => r.status === 'Rejected').length,
+                totalRefunded: returnList.filter(r => r.status === 'Completed').reduce((s, r) => s + Number(r.refundAmount || 0), 0)
+              };
 
-                  ${returnOrders.length ? `
-                    <div class="admin-table-wrap">
-                      <table class="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Order ID</th>
-                            <th>Patron</th>
-                            <th>Date</th>
-                            <th>Total</th>
-                            <th>Reason / Details</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          ${returnOrders.map(o => `
-                            <tr>
-                              <td><strong style="color:#111827">#${esc(o.id)}</strong></td>
-                              <td>
-                                <div><strong>${esc(o.customer_name || 'VIP Patron')}</strong></div>
-                                <div style="font-size:0.76rem;color:#6B7280">${esc(o.customer_email || '')}</div>
-                              </td>
-                              <td>${new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                              <td><strong>${money(o.total)}</strong></td>
-                              <td>
-                                <span style="font-size:0.84rem;color:#B91C1C">${esc(o.cancel_reason || o.return_reason || 'Patron cancellation request')}</span>
-                              </td>
-                              <td>
-                                <span class="order-status-pill cancelled">${esc(o.status)}</span>
-                              </td>
-                            </tr>
-                          `).join('')}
-                        </tbody>
-                      </table>
+              // Update sidebar pending badge immediately
+              const sideBadge = $('#sidebar-returns-badge');
+              if (sideBadge) {
+                sideBadge.textContent = stats.pending || 0;
+                sideBadge.style.display = (stats.pending || 0) > 0 ? 'inline-block' : 'none';
+              }
+
+              let retFilter = 'all';
+              let retSearch = '';
+
+              const openAdminReturnModal = (retObj) => {
+                const existing = $('#admin-return-resolution-modal');
+                if (existing) existing.remove();
+
+                const steps = ['Pending', 'Approved', 'Processing', 'Completed'];
+                const curIdx = steps.indexOf(retObj.status);
+                const isRejected = retObj.status === 'Rejected';
+                const isFinal = retObj.status === 'Completed';
+
+                const modalHtml = `
+                  <div class="admin-modal-overlay" id="admin-return-resolution-modal" style="z-index:99999">
+                    <div class="admin-modal-dialog" style="max-width:680px">
+                      <div class="admin-modal-head" style="background:#1E1E20;color:#FFF;border-bottom:1px solid #333">
+                        <h3 class="admin-modal-title" style="color:#FFF;font-family:var(--font-serif)">
+                          Return Request ${esc(retObj.returnCode)} · Order #${esc(retObj.orderId)}
+                        </h3>
+                        <button class="admin-modal-close-btn" id="btn-close-ret-modal" style="color:#FFF">&times;</button>
+                      </div>
+                      <div class="admin-modal-body" style="padding:1.4rem;max-height:80vh;overflow-y:auto">
+                        <!-- Top Status & Linked Order Summary -->
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin-bottom:1.1rem">
+                          <div>
+                            <div style="font-size:0.74rem;color:#64748B">Requested on ${new Date(retObj.requestedAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                            <strong style="font-size:0.96rem;color:#0F172A">Order #${esc(retObj.orderId)}</strong>
+                            <span style="font-size:0.78rem;color:#475569;margin-left:6px">(${esc(retObj.paymentMethod ? retObj.paymentMethod.toUpperCase() : 'PREPAID')})</span>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:10px">
+                            <span class="return-status-pill ${String(retObj.status || 'Pending').toLowerCase()}">${esc(retObj.status)}</span>
+                            <strong style="font-size:1.05rem;color:#111827">${money(retObj.refundAmount)}</strong>
+                          </div>
+                        </div>
+
+                        <!-- Progress Stepper -->
+                        ${!isRejected ? `
+                          <div class="tracking-stepper" style="margin:0.8rem 0 1.2rem">
+                            ${steps.map((s, idx) => {
+                              const done = curIdx >= idx;
+                              const curr = curIdx === idx;
+                              return `
+                                <div class="tracking-step ${done ? 'done' : ''} ${curr ? 'current' : ''}">
+                                  <div class="tracking-dot">${done ? '✓' : idx + 1}</div>
+                                  <div class="tracking-label">${s}</div>
+                                </div>
+                              `;
+                            }).join('')}
+                          </div>
+                        ` : `
+                          <div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:6px;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.84rem">
+                            <strong>Status: Rejected</strong> — This return request was rejected.
+                          </div>
+                        `}
+
+                        <!-- Customer & Product Grid -->
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.1rem">
+                          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;background:#fff">
+                            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:5px">Customer Details</div>
+                            <strong style="color:#111827;font-size:0.9rem;display:block">${esc(retObj.customerName)}</strong>
+                            <div style="font-size:0.8rem;color:#4B5563">${esc(retObj.customerEmail)}</div>
+                            <div style="font-size:0.8rem;color:#6B7280">${esc(retObj.customerPhone || 'Phone not provided')}</div>
+                          </div>
+
+                          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;background:#fff;display:flex;gap:10px;align-items:center">
+                            <img src="${retObj.productImage || 'images/p1.jpg'}" alt="${esc(retObj.productName)}" style="width:44px;height:58px;object-fit:cover;border-radius:4px;border:1px solid #E2E8F0">
+                            <div style="min-width:0">
+                              <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:3px">Returned Garment</div>
+                              <strong style="color:#111827;font-size:0.88rem;display:block">${esc(retObj.productName)}</strong>
+                              <div style="font-size:0.78rem;color:#4B5563">Size: <strong>${esc(retObj.size)}</strong> · Colour: <strong>${esc(retObj.color)}</strong> · Qty: <strong>${retObj.quantity}</strong></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Return Reason & Customer Comments -->
+                        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:11px 14px;background:#FAFAF9;margin-bottom:1.1rem">
+                          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:#6B7280;margin-bottom:4px">Customer Return Reason &amp; Comments</div>
+                          <div style="font-weight:600;color:#111827;font-size:0.88rem">${esc(retObj.reason)}</div>
+                          <p style="font-size:0.82rem;color:#4B5563;margin:4px 0 0">${retObj.comments ? esc(retObj.comments) : '<span style="color:#9CA3AF">No additional comments provided by patron.</span>'}</p>
+                        </div>
+
+                        <!-- Admin Resolution Controls -->
+                        <div style="border-top:1px solid #E5E7EB;padding-top:1rem">
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">
+                            Administrator Resolution Notes (Visible to Customer)
+                          </label>
+                          <textarea id="admin-return-notes-input" rows="3" placeholder="e.g. Reverse pickup scheduled with BlueDart, refund initiated to original payment method..." style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.6rem;font-size:0.86rem;color:#111827;resize:vertical" ${isFinal ? 'disabled' : ''}>${esc(retObj.adminNotes || '')}</textarea>
+
+                          ${!isFinal ? `
+                            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:0.7rem;font-size:0.8rem;color:#374151;cursor:pointer">
+                              <input type="checkbox" id="admin-return-restock-chk" ${!retObj.restocked ? 'checked' : 'disabled'}>
+                              <span>${retObj.restocked ? 'Variant inventory already restocked' : 'Automatically restock returned size × colour variant when marked Completed'}</span>
+                            </label>
+                          ` : `
+                            <div style="margin-top:0.6rem;font-size:0.8rem;color:#166534;font-weight:600">
+                              ✓ Return Completed${retObj.completedAt ? ` on ${new Date(retObj.completedAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}${retObj.restocked ? ' · Variant inventory restocked' : ''}
+                            </div>
+                          `}
+
+                          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:1.1rem;flex-wrap:wrap">
+                            <button type="button" id="btn-cancel-ret-modal" class="btn sm ghost" style="padding:7px 14px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;color:#374151;font-weight:600;cursor:pointer">Close</button>
+                            ${!isFinal ? `
+                              <div style="display:flex;gap:7px;flex-wrap:wrap">
+                                ${retObj.status !== 'Rejected' ? `<button type="button" class="btn sm ret-modal-action-btn" data-next-status="Rejected" style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:6px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer">Reject</button>` : ''}
+                                ${retObj.status === 'Pending' || retObj.status === 'Rejected' ? `<button type="button" class="btn sm ret-modal-action-btn" data-next-status="Approved" style="background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;border-radius:6px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer">Approve Return</button>` : ''}
+                                ${['Pending', 'Approved'].includes(retObj.status) ? `<button type="button" class="btn sm ret-modal-action-btn" data-next-status="Processing" style="background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;border-radius:6px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer">Mark Processing</button>` : ''}
+                                <button type="button" class="btn sm ret-modal-action-btn" data-next-status="Completed" style="background:#166534;color:#fff;border:none;border-radius:6px;padding:7px 15px;font-size:12px;font-weight:600;cursor:pointer">Complete Return</button>
+                              </div>
+                            ` : ''}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  ` : '<p class="muted" style="padding:2rem 0;text-align:center">No active returns or cancellations recorded.</p>'}
-                </div>
-              `;
+                  </div>
+                `;
+
+                const modalsRoot = $('#admin-modals-root') || document.body;
+                modalsRoot.insertAdjacentHTML('beforeend', modalHtml);
+
+                const modalEl = $('#admin-return-resolution-modal');
+                const closeRetModal = () => { if (modalEl) modalEl.remove(); };
+                $('#btn-close-ret-modal').onclick = closeRetModal;
+                $('#btn-cancel-ret-modal').onclick = closeRetModal;
+                modalEl.onclick = (e) => { if (e.target === modalEl) closeRetModal(); };
+
+                modalEl.querySelectorAll('.ret-modal-action-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const nextStatus = btn.dataset.nextStatus;
+                    const notes = $('#admin-return-notes-input')?.value?.trim() || '';
+                    const restockInventory = $('#admin-return-restock-chk') ? $('#admin-return-restock-chk').checked : true;
+                    try {
+                      btn.disabled = true;
+                      const r = await fetchAuth(`/api/admin/returns/${retObj.id}/status`, {
+                        method: 'PUT',
+                        body: { status: nextStatus, adminNotes: notes, restockInventory }
+                      });
+                      const resp = await r.json();
+                      if (!r.ok) throw new Error(resp.error || 'Could not update return status.');
+                      toast(resp.message || `Return ${retObj.returnCode} updated to ${nextStatus}.`);
+                      closeRetModal();
+                      renderTab('returns');
+                    } catch (err) {
+                      toast(err.message || 'Failed to update return status.');
+                      btn.disabled = false;
+                    }
+                  };
+                });
+              };
+
+              const quickUpdateReturn = async (retId, nextStatus) => {
+                let notes = null;
+                if (nextStatus === 'Rejected') {
+                  const input = prompt('Optional rejection note for customer:', 'Item does not meet return eligibility criteria');
+                  if (input === null) return;
+                  notes = input;
+                }
+                try {
+                  const r = await fetchAuth(`/api/admin/returns/${retId}/status`, {
+                    method: 'PUT',
+                    body: { status: nextStatus, ...(notes !== null ? { adminNotes: notes } : {}), restockInventory: true }
+                  });
+                  const resp = await r.json();
+                  if (!r.ok) throw new Error(resp.error || 'Could not update return status.');
+                  toast(resp.message || `Return status updated to ${nextStatus}.`);
+                  renderTab('returns');
+                } catch (err) {
+                  toast(err.message || 'Error updating return status.');
+                }
+              };
+
+              function renderReturnsView() {
+                let filtered = [...returnList];
+                if (retFilter !== 'all') {
+                  filtered = filtered.filter(r => String(r.status || '').toLowerCase() === retFilter);
+                }
+                if (retSearch) {
+                  const q = retSearch.toLowerCase();
+                  filtered = filtered.filter(r =>
+                    String(r.returnCode || '').toLowerCase().includes(q) ||
+                    String(r.orderId || '').toLowerCase().includes(q) ||
+                    String(r.customerName || '').toLowerCase().includes(q) ||
+                    String(r.customerEmail || '').toLowerCase().includes(q) ||
+                    String(r.productName || '').toLowerCase().includes(q) ||
+                    String(r.reason || '').toLowerCase().includes(q)
+                  );
+                }
+
+                container.innerHTML = `
+                  <!-- Return KPI Cards -->
+                  <div class="admin-kpi-grid" style="grid-template-columns:repeat(4, 1fr);margin-bottom:1.5rem">
+                    <div class="admin-kpi-card">
+                      <span class="kpi-title">Pending Return Requests</span>
+                      <div class="kpi-value" style="color:#D97706">${stats.pending || 0}</div>
+                      <div class="kpi-subtext">Awaiting administrator decision</div>
+                    </div>
+                    <div class="admin-kpi-card">
+                      <span class="kpi-title">Approved &amp; Processing</span>
+                      <div class="kpi-value" style="color:#4F46E5">${(stats.approved || 0) + (stats.processing || 0)}</div>
+                      <div class="kpi-subtext">${stats.approved || 0} approved · ${stats.processing || 0} in processing</div>
+                    </div>
+                    <div class="admin-kpi-card">
+                      <span class="kpi-title">Completed Returns</span>
+                      <div class="kpi-value" style="color:#10B981">${stats.completed || 0}</div>
+                      <div class="kpi-subtext">Refunded: ${money(stats.totalRefunded || 0)}</div>
+                    </div>
+                    <div class="admin-kpi-card">
+                      <span class="kpi-title">Rejected Requests</span>
+                      <div class="kpi-value" style="color:#DC2626">${stats.rejected || 0}</div>
+                      <div class="kpi-subtext">Out of ${stats.total || 0} total requests</div>
+                    </div>
+                  </div>
+
+                  <!-- Return Requests Management Table -->
+                  <div class="admin-surface-card">
+                    <div class="card-head-between" style="margin-bottom:1.1rem;flex-wrap:wrap;gap:10px">
+                      <div>
+                        <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.25rem;color:#111827">Customer Return Management (${returnList.length})</h2>
+                        <p class="muted" style="margin:0">Review, approve, reject, and process return requests synchronized directly with patron accounts.</p>
+                      </div>
+                      <div style="display:flex;gap:8px;align-items:center">
+                        <input type="text" id="admin-returns-search" value="${esc(retSearch)}" placeholder="Search return ID, order #, customer, product..." class="admin-form-control" style="width:260px;padding:6px 12px">
+                        <button type="button" id="admin-returns-refresh-btn" class="btn sm ghost" style="padding:6px 12px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;font-weight:600">↻ Refresh</button>
+                      </div>
+                    </div>
+
+                    <div class="support-filter-tabs">
+                      <button class="support-filter-btn ${retFilter === 'all' ? 'active' : ''}" data-admin-ret-filter="all">All (${stats.total || 0})</button>
+                      <button class="support-filter-btn ${retFilter === 'pending' ? 'active' : ''}" data-admin-ret-filter="pending">Pending (${stats.pending || 0})</button>
+                      <button class="support-filter-btn ${retFilter === 'approved' ? 'active' : ''}" data-admin-ret-filter="approved">Approved (${stats.approved || 0})</button>
+                      <button class="support-filter-btn ${retFilter === 'processing' ? 'active' : ''}" data-admin-ret-filter="processing">Processing (${stats.processing || 0})</button>
+                      <button class="support-filter-btn ${retFilter === 'completed' ? 'active' : ''}" data-admin-ret-filter="completed">Completed (${stats.completed || 0})</button>
+                      <button class="support-filter-btn ${retFilter === 'rejected' ? 'active' : ''}" data-admin-ret-filter="rejected">Rejected (${stats.rejected || 0})</button>
+                    </div>
+
+                    ${filtered.length ? `
+                      <div class="admin-table-wrap">
+                        <table class="admin-table" id="admin-returns-table">
+                          <thead>
+                            <tr>
+                              <th>Return / Order ID</th>
+                              <th>Customer Details</th>
+                              <th>Product &amp; Variant</th>
+                              <th>Qty &amp; Refund</th>
+                              <th>Reason &amp; Date</th>
+                              <th>Status</th>
+                              <th style="min-width:210px">Resolution Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${filtered.map(r => {
+                              const st = r.status || 'Pending';
+                              const stCls = st.toLowerCase();
+                              return `
+                                <tr>
+                                  <td>
+                                    <strong style="color:#111827;font-size:13px">${esc(r.returnCode)}</strong>
+                                    <div style="font-size:11.5px;color:#4F46E5;font-weight:600">Order #${esc(r.orderId)}</div>
+                                  </td>
+                                  <td>
+                                    <strong style="color:#0F172A;font-size:13px">${esc(r.customerName)}</strong>
+                                    <div style="font-size:11.5px;color:#64748B">${esc(r.customerEmail)}</div>
+                                    ${r.customerPhone ? `<div style="font-size:11px;color:#94A3B8">${esc(r.customerPhone)}</div>` : ''}
+                                  </td>
+                                  <td>
+                                    <div style="display:flex;align-items:center;gap:10px">
+                                      <img src="${r.productImage || 'images/p1.jpg'}" alt="${esc(r.productName)}" style="width:36px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #E2E8F0">
+                                      <div>
+                                        <strong style="font-size:12.5px;color:#111827;display:block">${esc(r.productName)}</strong>
+                                        <span style="font-size:11.5px;color:#64748B">Size: <strong>${esc(r.size)}</strong> · Colour: <strong>${esc(r.color)}</strong></span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <strong style="font-size:13px">${r.quantity} unit${r.quantity > 1 ? 's' : ''}</strong>
+                                    <div style="font-size:12px;color:#0F172A;font-weight:600">${money(r.refundAmount)}</div>
+                                  </td>
+                                  <td>
+                                    <div style="font-size:12.5px;font-weight:600;color:#111827">${esc(r.reason)}</div>
+                                    ${r.comments ? `<div style="font-size:11.5px;color:#6B7280;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.comments)}">"${esc(r.comments)}"</div>` : ''}
+                                    <div style="font-size:11px;color:#94A3B8;margin-top:2px">${new Date(r.requestedAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                  </td>
+                                  <td>
+                                    <span class="return-status-pill ${stCls}">${esc(st)}</span>
+                                    ${r.restocked ? '<div style="font-size:10.5px;color:#166534;margin-top:3px">✓ Restocked</div>' : ''}
+                                  </td>
+                                  <td>
+                                    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                                      ${st === 'Pending' ? `
+                                        <button class="btn sm admin-ret-quick-btn" data-rid="${r.id}" data-next="Approved" style="background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer">Approve</button>
+                                        <button class="btn sm admin-ret-quick-btn" data-rid="${r.id}" data-next="Rejected" style="background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer">Reject</button>
+                                      ` : ''}
+                                      ${st === 'Approved' ? `
+                                        <button class="btn sm admin-ret-quick-btn" data-rid="${r.id}" data-next="Processing" style="background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer">Process</button>
+                                        <button class="btn sm admin-ret-quick-btn" data-rid="${r.id}" data-next="Completed" style="background:#166534;color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer">Complete</button>
+                                      ` : ''}
+                                      ${st === 'Processing' ? `
+                                        <button class="btn sm admin-ret-quick-btn" data-rid="${r.id}" data-next="Completed" style="background:#166534;color:#fff;border:none;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">Complete</button>
+                                      ` : ''}
+                                      <button class="btn sm ghost admin-ret-review-btn" data-rid="${r.id}" style="background:#fff;color:#1E1E20;border:1px solid #D1D5DB;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">${st === 'Completed' || st === 'Rejected' ? 'Details' : 'Review'}</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              `;
+                            }).join('')}
+                          </tbody>
+                        </table>
+                      </div>
+                    ` : `
+                      <div style="text-align:center;padding:2.5rem 1rem;color:#6B7280">
+                        No ${retFilter === 'all' ? '' : retFilter + ' '}return requests found.
+                      </div>
+                    `}
+                  </div>
+                `;
+
+                $('#admin-returns-search')?.addEventListener('input', (e) => {
+                  retSearch = e.target.value.trim();
+                  renderReturnsView();
+                });
+
+                $('#admin-returns-refresh-btn')?.addEventListener('click', () => renderTab('returns'));
+
+                $$('[data-admin-ret-filter]').forEach(btn => {
+                  btn.onclick = () => {
+                    retFilter = btn.dataset.adminRetFilter;
+                    renderReturnsView();
+                  };
+                });
+
+                $$('.admin-ret-quick-btn').forEach(btn => {
+                  btn.onclick = () => quickUpdateReturn(Number(btn.dataset.rid), btn.dataset.next);
+                });
+
+                $$('.admin-ret-review-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const obj = returnList.find(x => Number(x.id) === Number(btn.dataset.rid));
+                    if (obj) openAdminReturnModal(obj);
+                  };
+                });
+              }
+
+              renderReturnsView();
             } catch (err) {
-              container.innerHTML = '<p class="muted">Could not retrieve returns.</p>';
+              container.innerHTML = `<p class="muted" style="padding:1.5rem 0">Could not retrieve return requests: ${esc(err.message)}</p>`;
             }
           }
 
           /* ==========================================================================
-             TAB: Pricing & Promotional Coupons
+             TAB: Discounts — Selected Product Discounts & Promotional Coupons
              ========================================================================== */
           else if (tabName === 'coupons') {
-            container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading promotional privileges...</p>';
+            container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading discounts &amp; promotional privileges...</p>';
             try {
-              const res = await fetchAuth('/api/admin/coupons');
-              const coupons = await res.json();
+              const [prodDiscRes, couponsRes, adminProdsRes] = await Promise.all([
+                fetchAuth('/api/admin/product-discounts'),
+                fetchAuth('/api/admin/coupons'),
+                fetchAuth('/api/admin/products')
+              ]);
+              const prodDiscData = prodDiscRes.ok ? await prodDiscRes.json() : { discounts: [], stats: {} };
+              const coupons = couponsRes.ok ? await couponsRes.json() : [];
+              const allAdminProds = adminProdsRes.ok ? await adminProdsRes.json() : [];
+
+              const discountList = Array.isArray(prodDiscData.discounts) ? prodDiscData.discounts : [];
+              const dStats = prodDiscData.stats || {
+                total: discountList.length,
+                active: discountList.filter(d => d.status === 'active').length,
+                scheduled: discountList.filter(d => d.status === 'scheduled').length,
+                expired: discountList.filter(d => d.status === 'expired').length,
+                inactive: discountList.filter(d => d.status === 'inactive').length
+              };
               const couponList = Array.isArray(coupons) ? coupons : [];
+              const catalogProducts = Array.isArray(allAdminProds) ? allAdminProds : [];
 
-              container.innerHTML = `
-                <!-- New Coupon Form -->
-                <div class="admin-surface-card" style="margin-bottom:2rem">
-                  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.4rem;color:#111827">Create Promotional Privilege</h2>
-                  <p class="muted" style="margin-bottom:1.4rem">Issue atelier promotional discount coupons for patrons.</p>
-                  
-                  <form id="create-coupon-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
-                    <div>
-                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Coupon Code</label>
-                      <input name="code" required placeholder="e.g. LUXURY20" style="text-transform:uppercase;width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
-                    </div>
-                    <div>
-                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Discount Percentage (%)</label>
-                      <input name="discountPercent" type="number" min="1" max="90" required placeholder="20" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
-                    </div>
-                    <div>
-                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Minimum Order (INR)</label>
-                      <input name="minOrderAmount" type="number" value="0" placeholder="5000" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
-                    </div>
-                    <div>
-                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Description / Note</label>
-                      <input name="description" placeholder="20% off couture collections" required style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
-                    </div>
-                    <div style="grid-column:1/-1;margin-top:0.4rem">
-                      <button class="btn" type="submit" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer">Issue Promo Code</button>
-                    </div>
-                  </form>
-                </div>
+              const toLocalInputVal = (dateObj) => {
+                const dt = new Date(dateObj);
+                if (isNaN(dt.getTime())) return '';
+                const pad = n => String(n).padStart(2, '0');
+                return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+              };
 
-                <!-- Coupons Table -->
-                <div class="admin-surface-card">
-                  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.2rem;color:#111827">Active Promotional Privileges (${couponList.length})</h2>
-                  <div class="admin-table-wrap">
-                    <table class="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Promo Code</th>
-                          <th>Discount</th>
-                          <th>Min Spend</th>
-                          <th>Privilege Details</th>
-                          <th>Status</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${couponList.map(c => `
-                          <tr>
-                            <td><strong style="color:#111827">${esc(c.code)}</strong></td>
-                            <td><strong>${c.discountPercent}% OFF</strong></td>
-                            <td>${c.minOrderAmount > 0 ? money(c.minOrderAmount) : 'None'}</td>
-                            <td>${esc(c.description || 'Promotional coupon')}</td>
-                            <td>
-                              <span class="admin-pill ${c.isActive ? 'forest' : 'warn'}">${c.isActive ? 'Active' : 'Disabled'}</span>
-                            </td>
-                            <td>
-                              <button class="link delete-coupon-btn" data-cid="${c.id}" style="color:#b91c1c;font-size:0.85rem;background:none;border:none;cursor:pointer">Delete</button>
-                            </td>
-                          </tr>
-                        `).join('')}
-                      </tbody>
-                    </table>
+              let activeSubSection = 'product-discounts';
+              let statusFilter = 'all';
+              let productPickerSearch = '';
+              let editingDiscountId = null;
+
+              const nowDt = new Date();
+              const nextWeekDt = new Date(nowDt.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+              let formState = {
+                name: '',
+                discountType: 'percentage',
+                discountValue: '15',
+                startDate: toLocalInputVal(nowDt),
+                endDate: toLocalInputVal(nextWeekDt),
+                description: '',
+                isActive: true,
+                selectedProductIds: []
+              };
+
+              const resetFormState = () => {
+                const n = new Date();
+                const w = new Date(n.getTime() + 7 * 24 * 60 * 60 * 1000);
+                editingDiscountId = null;
+                formState = {
+                  name: '',
+                  discountType: 'percentage',
+                  discountValue: '15',
+                  startDate: toLocalInputVal(n),
+                  endDate: toLocalInputVal(w),
+                  description: '',
+                  isActive: true,
+                  selectedProductIds: []
+                };
+              };
+
+              const statusPillHtml = (st) => {
+                if (st === 'active') return '<span class="admin-pill published">Active</span>';
+                if (st === 'scheduled') return '<span class="return-status-pill approved" style="font-size:0.7rem">Scheduled</span>';
+                if (st === 'expired') return '<span class="admin-pill archived">Expired</span>';
+                return '<span class="admin-pill draft">Inactive</span>';
+              };
+
+              const computePreviewPrice = (price, type, val) => {
+                const orig = Number(price || 0);
+                const v = Number(val || 0);
+                if (!orig || !isFinite(v) || v <= 0) return { valid: false, discounted: orig, savings: 0, pct: 0, msg: 'Enter valid value > 0' };
+                if (type === 'percentage') {
+                  if (v >= 100) return { valid: false, discounted: orig, savings: 0, pct: 0, msg: 'Must be < 100%' };
+                  const sav = Math.round(((orig * v) / 100 + Number.EPSILON) * 100) / 100;
+                  return { valid: sav < orig, discounted: Math.round((orig - sav + Number.EPSILON) * 100) / 100, savings: sav, pct: Math.round((sav / orig) * 100), msg: '' };
+                }
+                if (v >= orig) return { valid: false, discounted: orig, savings: 0, pct: 0, msg: `Exceeds price (${moneyExact(orig)})` };
+                return { valid: true, discounted: Math.round((orig - v + Number.EPSILON) * 100) / 100, savings: v, pct: Math.round((v / orig) * 100), msg: '' };
+              };
+
+              const renderDiscountsTab = () => {
+                const selectedSet = new Set(formState.selectedProductIds.map(Number));
+                const selectedProds = catalogProducts.filter(p => selectedSet.has(Number(p.id)));
+                const filteredPickerProds = productPickerSearch
+                  ? catalogProducts.filter(p =>
+                    (p.name && p.name.toLowerCase().includes(productPickerSearch.toLowerCase())) ||
+                    (p.type && p.type.toLowerCase().includes(productPickerSearch.toLowerCase())) ||
+                    String(p.id) === productPickerSearch.trim()
+                  )
+                  : catalogProducts;
+
+                const filteredDiscounts = statusFilter === 'all'
+                  ? discountList
+                  : discountList.filter(d => d.status === statusFilter);
+
+                container.innerHTML = `
+                  <!-- Sub-navigation between Selected Product Discounts and Promo Coupons -->
+                  <div class="support-filter-tabs" style="margin-bottom:1.4rem">
+                    <button type="button" class="support-filter-btn ${activeSubSection === 'product-discounts' ? 'active' : ''}" data-disc-sub="product-discounts">Selected Product Discounts (${dStats.total || 0})</button>
+                    <button type="button" class="support-filter-btn ${activeSubSection === 'promo-coupons' ? 'active' : ''}" data-disc-sub="promo-coupons">Promo Code Coupons (${couponList.length})</button>
                   </div>
-                </div>
-              `;
 
-              $('#create-coupon-form').onsubmit = async e => {
-                e.preventDefault();
-                const d = Object.fromEntries(new FormData(e.target));
-                d.code = d.code.toUpperCase().trim();
-                try {
-                  const r = await fetchAuth('/api/admin/coupons', { method: 'POST', body: d });
-                  const data = await r.json();
-                  if (!r.ok) throw new Error(data.error);
-                  toast(`Coupon "${d.code}" successfully registered.`);
-                  renderTab('coupons');
-                } catch (err) {
-                  toast(err.message || 'Could not create coupon.');
+                  ${activeSubSection === 'product-discounts' ? `
+                    <!-- Discount Status KPI Cards -->
+                    <div class="admin-kpi-grid" style="grid-template-columns:repeat(4, 1fr);margin-bottom:1.5rem">
+                      <div class="admin-kpi-card">
+                        <span class="kpi-title">Active Discounts</span>
+                        <div class="kpi-value" style="color:#10B981">${dStats.active || 0}</div>
+                        <div class="kpi-subtext">Live on storefront &amp; checkout</div>
+                      </div>
+                      <div class="admin-kpi-card">
+                        <span class="kpi-title">Scheduled</span>
+                        <div class="kpi-value" style="color:#4F46E5">${dStats.scheduled || 0}</div>
+                        <div class="kpi-subtext">Upcoming timed campaigns</div>
+                      </div>
+                      <div class="admin-kpi-card">
+                        <span class="kpi-title">Expired</span>
+                        <div class="kpi-value" style="color:#6B7280">${dStats.expired || 0}</div>
+                        <div class="kpi-subtext">Past end date (auto-stopped)</div>
+                      </div>
+                      <div class="admin-kpi-card">
+                        <span class="kpi-title">Inactive / Paused</span>
+                        <div class="kpi-value" style="color:#D97706">${dStats.inactive || 0}</div>
+                        <div class="kpi-subtext">Manually deactivated</div>
+                      </div>
+                    </div>
+
+                    <!-- Create / Edit Selected Product Discount Card -->
+                    <div class="admin-surface-card" style="margin-bottom:1.8rem">
+                      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:1.1rem">
+                        <div>
+                          <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.25rem;color:#111827">
+                            ${editingDiscountId ? `Edit Selected Product Discount #${editingDiscountId}` : 'Create Selected Product Discount'}
+                          </h2>
+                          <p class="muted" style="margin:0">Select individual products (no selection limit), schedule dates, and review discounted prices before applying.</p>
+                        </div>
+                        ${editingDiscountId ? '<button type="button" id="btn-cancel-edit-discount" class="btn sm ghost" style="padding:6px 14px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;font-weight:600">Cancel Edit</button>' : ''}
+                      </div>
+
+                      <form id="product-discount-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Discount Campaign Name <span style="color:#DC2626">*</span></label>
+                          <input id="pd-name" name="name" required value="${esc(formState.name)}" placeholder="e.g. Bridal Silk Weekend Offer" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                          <div>
+                            <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Discount Type</label>
+                            <select id="pd-type" name="discountType" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                              <option value="percentage" ${formState.discountType === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
+                              <option value="fixed" ${formState.discountType === 'fixed' ? 'selected' : ''}>Fixed Amount (₹)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Discount Value <span style="color:#DC2626">*</span></label>
+                            <input id="pd-value" name="discountValue" type="number" step="0.01" min="0.01" required value="${esc(formState.discountValue)}" placeholder="${formState.discountType === 'percentage' ? '15' : '500'}" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                          </div>
+                        </div>
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Start Date &amp; Time <span style="color:#DC2626">*</span></label>
+                          <input id="pd-start" name="startDate" type="datetime-local" required value="${esc(formState.startDate)}" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">End Date &amp; Time <span style="color:#DC2626">*</span></label>
+                          <input id="pd-end" name="endDate" type="datetime-local" required value="${esc(formState.endDate)}" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end">
+                          <div>
+                            <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Note / Description (Optional)</label>
+                            <input id="pd-desc" name="description" value="${esc(formState.description)}" placeholder="Applicable exclusively to selected couture creations" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                          </div>
+                          <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.84rem;font-weight:600;color:#374151;padding-bottom:8px;cursor:pointer">
+                            <input type="checkbox" id="pd-active" name="isActive" ${formState.isActive ? 'checked' : ''}>
+                            <span>Active</span>
+                          </label>
+                        </div>
+
+                        <!-- Step 1: Individual Product Selector (No artificial limit) -->
+                        <div style="grid-column:1/-1" class="admin-variant-panel">
+                          <div class="admin-variant-section-title" style="flex-wrap:wrap">
+                            <span>1. Select Products Individually (${selectedProds.length} selected · No limit)</span>
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                              <input type="text" id="pd-prod-search" value="${esc(productPickerSearch)}" placeholder="Search products..." style="width:180px;padding:4px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.78rem;background:#fff">
+                              <button type="button" id="pd-select-all-btn" class="btn sm ghost" style="padding:4px 9px;font-size:0.74rem;border:1px solid #D1D5DB;border-radius:5px;background:#fff;cursor:pointer;font-weight:600">Select All (${filteredPickerProds.length})</button>
+                              <button type="button" id="pd-clear-all-btn" class="btn sm ghost" style="padding:4px 9px;font-size:0.74rem;border:1px solid #D1D5DB;border-radius:5px;background:#fff;cursor:pointer">Clear</button>
+                            </div>
+                          </div>
+                          <div class="admin-variant-matrix-wrap" style="max-height:220px">
+                            <table class="admin-variant-matrix">
+                              <thead>
+                                <tr>
+                                  <th style="width:36px">Pick</th>
+                                  <th>Product</th>
+                                  <th>Category</th>
+                                  <th>Status</th>
+                                  <th style="text-align:right">Original Price</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                ${filteredPickerProds.map(p => {
+                                  const checked = selectedSet.has(Number(p.id));
+                                  return `
+                                    <tr style="${checked ? 'background:#F0FDF4' : ''}">
+                                      <td>
+                                        <input type="checkbox" class="pd-prod-chk" data-pid="${p.id}" ${checked ? 'checked' : ''} style="cursor:pointer">
+                                      </td>
+                                      <td>
+                                        <div style="display:flex;align-items:center;gap:8px">
+                                          <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:30px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #E5E7EB">
+                                          <div>
+                                            <strong style="color:#111827">${esc(p.name)}</strong>
+                                            <div style="font-size:0.7rem;color:#6B7280">ID #${p.id} · ${esc(p.type || '')}</div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td>${p.cat === 'ethnic' ? 'Ethnic' : 'Western'}</td>
+                                      <td>${renderPublishStatusPill(p.publishStatus)}</td>
+                                      <td style="text-align:right"><strong>${moneyExact(p.price)}</strong></td>
+                                    </tr>
+                                  `;
+                                }).join('')}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <!-- Step 2: Selected Products Preview BEFORE Applying Discount -->
+                          <div style="margin-top:0.95rem;padding-top:0.85rem;border-top:1px solid #E5E7EB">
+                            <div class="admin-variant-section-title">
+                              <span>2. Selected Products Preview Before Applying (${selectedProds.length})</span>
+                              ${selectedProds.length === 0 ? '<span style="color:#DC2626;font-size:0.74rem">Select at least 1 product</span>' : ''}
+                            </div>
+                            ${selectedProds.length ? `
+                              <div class="admin-variant-matrix-wrap" style="max-height:190px">
+                                <table class="admin-variant-matrix">
+                                  <thead>
+                                    <tr>
+                                      <th>Selected Product</th>
+                                      <th style="text-align:right">Original Price</th>
+                                      <th style="text-align:right">Discounted Price</th>
+                                      <th style="text-align:right">Savings</th>
+                                      <th style="text-align:right">Remove</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    ${selectedProds.map(p => {
+                                      const prev = computePreviewPrice(p.price, formState.discountType, formState.discountValue);
+                                      return `
+                                        <tr style="${!prev.valid ? 'background:#FEF2F2' : ''}">
+                                          <td><strong>${esc(p.name)}</strong></td>
+                                          <td style="text-align:right;color:#6B7280;text-decoration:${prev.valid ? 'line-through' : 'none'}">${moneyExact(p.price)}</td>
+                                          <td style="text-align:right;font-weight:700;color:${prev.valid ? '#166534' : '#DC2626'}">${prev.valid ? moneyExact(prev.discounted) : esc(prev.msg)}</td>
+                                          <td style="text-align:right;color:#166534;font-weight:600">${prev.valid ? `${moneyExact(prev.savings)} (${prev.pct}%)` : '—'}</td>
+                                          <td style="text-align:right">
+                                            <button type="button" class="pd-remove-sel-btn" data-pid="${p.id}" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:0.95rem">&times;</button>
+                                          </td>
+                                        </tr>
+                                      `;
+                                    }).join('')}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ` : '<p class="muted" style="font-size:0.8rem;margin:0.3rem 0 0">No products selected yet. Check one or more products above to preview their discounted prices.</p>'}
+                          </div>
+                        </div>
+
+                        <div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px;margin-top:0.2rem">
+                          ${editingDiscountId ? '<button type="button" id="btn-cancel-edit-discount-bottom" class="btn sm ghost" style="padding:8px 16px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;cursor:pointer;font-weight:600">Cancel</button>' : ''}
+                          <button type="submit" id="btn-submit-product-discount" class="btn" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer">
+                            ${editingDiscountId ? 'Save Discount Changes' : `Apply Discount to ${selectedProds.length} Selected Product${selectedProds.length === 1 ? '' : 's'}`}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- Configured Selected Product Discounts List -->
+                    <div class="admin-surface-card">
+                      <div class="card-head-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:10px">
+                        <div>
+                          <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.25rem;color:#111827">Scheduled &amp; Active Product Discounts (${discountList.length})</h2>
+                          <p class="muted" style="margin:0">Edit schedules, pause/activate campaigns, or remove discounts anytime.</p>
+                        </div>
+                      </div>
+
+                      <div class="support-filter-tabs">
+                        <button type="button" class="support-filter-btn ${statusFilter === 'all' ? 'active' : ''}" data-pd-status="all">All (${dStats.total || 0})</button>
+                        <button type="button" class="support-filter-btn ${statusFilter === 'active' ? 'active' : ''}" data-pd-status="active">Active (${dStats.active || 0})</button>
+                        <button type="button" class="support-filter-btn ${statusFilter === 'scheduled' ? 'active' : ''}" data-pd-status="scheduled">Scheduled (${dStats.scheduled || 0})</button>
+                        <button type="button" class="support-filter-btn ${statusFilter === 'expired' ? 'active' : ''}" data-pd-status="expired">Expired (${dStats.expired || 0})</button>
+                        <button type="button" class="support-filter-btn ${statusFilter === 'inactive' ? 'active' : ''}" data-pd-status="inactive">Inactive (${dStats.inactive || 0})</button>
+                      </div>
+
+                      ${filteredDiscounts.length ? `
+                        <div class="admin-table-wrap">
+                          <table class="admin-table">
+                            <thead>
+                              <tr>
+                                <th>Campaign</th>
+                                <th>Discount</th>
+                                <th>Selected Products</th>
+                                <th>Schedule</th>
+                                <th>Status</th>
+                                <th style="min-width:170px">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${filteredDiscounts.map(d => `
+                                <tr>
+                                  <td>
+                                    <strong style="color:#111827">${esc(d.name)}</strong>
+                                    ${d.description ? `<div style="font-size:0.76rem;color:#6B7280">${esc(d.description)}</div>` : ''}
+                                  </td>
+                                  <td>
+                                    <strong style="color:#166534">${d.discountType === 'percentage' ? `${d.discountValue}% OFF` : `${moneyExact(d.discountValue)} OFF`}</strong>
+                                    <div style="font-size:0.72rem;color:#6B7280">${d.discountType === 'percentage' ? 'Percentage' : 'Fixed Amount'}</div>
+                                  </td>
+                                  <td>
+                                    <strong style="font-size:0.82rem">${d.productCount} Product${d.productCount === 1 ? '' : 's'}</strong>
+                                    <div style="font-size:0.74rem;color:#4B5563;max-width:240px">
+                                      ${d.products.slice(0, 3).map(p => esc(p.name)).join(', ')}${d.products.length > 3 ? ` +${d.products.length - 3} more` : ''}
+                                    </div>
+                                  </td>
+                                  <td style="font-size:0.78rem;color:#374151">
+                                    <div><strong>Start:</strong> ${new Date(d.startDate).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                                    <div><strong>End:</strong> ${new Date(d.endDate).toLocaleString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                                  </td>
+                                  <td>${statusPillHtml(d.status)}</td>
+                                  <td>
+                                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                                      <button type="button" class="btn sm ghost pd-edit-btn" data-did="${d.id}" style="padding:4px 9px;font-size:0.74rem;border:1px solid #D1D5DB;border-radius:5px;background:#fff;cursor:pointer;font-weight:600">Edit</button>
+                                      <button type="button" class="btn sm pd-toggle-btn" data-did="${d.id}" data-active="${d.isActive ? '1' : '0'}" style="padding:4px 9px;font-size:0.74rem;border:1px solid ${d.isActive ? '#D97706' : '#166534'};border-radius:5px;background:${d.isActive ? '#FFFBEB' : '#DCFCE7'};color:${d.isActive ? '#92400E' : '#166534'};cursor:pointer;font-weight:600">${d.isActive ? 'Deactivate' : 'Activate'}</button>
+                                      <button type="button" class="link pd-delete-btn" data-did="${d.id}" style="color:#b91c1c;font-size:0.8rem;background:none;border:none;cursor:pointer">Remove</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              `).join('')}
+                            </tbody>
+                          </table>
+                        </div>
+                      ` : '<p class="muted" style="text-align:center;padding:2rem 0">No product discounts match this filter yet.</p>'}
+                    </div>
+                  ` : `
+                    <!-- Existing Promo Code Coupons (100% Preserved) -->
+                    <div class="admin-surface-card" style="margin-bottom:2rem">
+                      <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.4rem;color:#111827">Create Promotional Privilege</h2>
+                      <p class="muted" style="margin-bottom:1.4rem">Issue atelier promotional discount coupons for patrons.</p>
+                      
+                      <form id="create-coupon-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Coupon Code</label>
+                          <input name="code" required placeholder="e.g. LUXURY20" style="text-transform:uppercase;width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Discount Percentage (%)</label>
+                          <input name="discountPercent" type="number" min="1" max="90" required placeholder="20" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Minimum Order (INR)</label>
+                          <input name="minOrderAmount" type="number" value="0" placeholder="5000" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div>
+                          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Description / Note</label>
+                          <input name="description" placeholder="20% off couture collections" required style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        </div>
+                        <div style="grid-column:1/-1;margin-top:0.4rem">
+                          <button class="btn" type="submit" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer">Issue Promo Code</button>
+                        </div>
+                      </form>
+                    </div>
+
+                    <div class="admin-surface-card">
+                      <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.2rem;color:#111827">Active Promotional Privileges (${couponList.length})</h2>
+                      <div class="admin-table-wrap">
+                        <table class="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Promo Code</th>
+                              <th>Discount</th>
+                              <th>Min Spend</th>
+                              <th>Privilege Details</th>
+                              <th>Status</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${couponList.map(c => `
+                              <tr>
+                                <td><strong style="color:#111827">${esc(c.code)}</strong></td>
+                                <td><strong>${c.discount_percent ?? c.discountPercent}% OFF</strong></td>
+                                <td>${(c.min_order_amount ?? c.minOrderAmount) > 0 ? money(c.min_order_amount ?? c.minOrderAmount) : 'None'}</td>
+                                <td>${esc(c.description || 'Promotional coupon')}</td>
+                                <td>
+                                  <span class="admin-pill ${(c.is_active ?? c.isActive) ? 'forest' : 'warn'}">${(c.is_active ?? c.isActive) ? 'Active' : 'Disabled'}</span>
+                                </td>
+                                <td>
+                                  <button class="link delete-coupon-btn" data-cid="${c.id}" style="color:#b91c1c;font-size:0.85rem;background:none;border:none;cursor:pointer">Delete</button>
+                                </td>
+                              </tr>
+                            `).join('')}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  `}
+                `;
+
+                // Sub-section tab switcher
+                $$('[data-disc-sub]').forEach(btn => {
+                  btn.onclick = () => {
+                    activeSubSection = btn.dataset.discSub;
+                    renderDiscountsTab();
+                  };
+                });
+
+                if (activeSubSection === 'product-discounts') {
+                  // Sync form inputs to state
+                  const syncInputs = () => {
+                    formState.name = $('#pd-name')?.value ?? formState.name;
+                    formState.discountType = $('#pd-type')?.value ?? formState.discountType;
+                    formState.discountValue = $('#pd-value')?.value ?? formState.discountValue;
+                    formState.startDate = $('#pd-start')?.value ?? formState.startDate;
+                    formState.endDate = $('#pd-end')?.value ?? formState.endDate;
+                    formState.description = $('#pd-desc')?.value ?? formState.description;
+                    formState.isActive = $('#pd-active') ? $('#pd-active').checked : formState.isActive;
+                  };
+
+                  $('#pd-type')?.addEventListener('change', () => { syncInputs(); renderDiscountsTab(); });
+                  $('#pd-value')?.addEventListener('change', () => { syncInputs(); renderDiscountsTab(); });
+                  $('#pd-name')?.addEventListener('input', () => { formState.name = $('#pd-name').value; });
+                  $('#pd-start')?.addEventListener('change', () => { formState.startDate = $('#pd-start').value; });
+                  $('#pd-end')?.addEventListener('change', () => { formState.endDate = $('#pd-end').value; });
+                  $('#pd-desc')?.addEventListener('input', () => { formState.description = $('#pd-desc').value; });
+                  $('#pd-active')?.addEventListener('change', () => { formState.isActive = $('#pd-active').checked; });
+
+                  $('#pd-prod-search')?.addEventListener('input', (e) => {
+                    syncInputs();
+                    productPickerSearch = e.target.value;
+                    renderDiscountsTab();
+                    const inp = $('#pd-prod-search');
+                    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+                  });
+
+                  $$('.pd-prod-chk').forEach(chk => {
+                    chk.onchange = () => {
+                      syncInputs();
+                      const pid = Number(chk.dataset.pid);
+                      if (chk.checked) {
+                        if (!formState.selectedProductIds.includes(pid)) formState.selectedProductIds.push(pid);
+                      } else {
+                        formState.selectedProductIds = formState.selectedProductIds.filter(id => Number(id) !== pid);
+                      }
+                      renderDiscountsTab();
+                    };
+                  });
+
+                  $$('.pd-remove-sel-btn').forEach(btn => {
+                    btn.onclick = () => {
+                      syncInputs();
+                      const pid = Number(btn.dataset.pid);
+                      formState.selectedProductIds = formState.selectedProductIds.filter(id => Number(id) !== pid);
+                      renderDiscountsTab();
+                    };
+                  });
+
+                  $('#pd-select-all-btn')?.addEventListener('click', () => {
+                    syncInputs();
+                    filteredPickerProds.forEach(p => {
+                      if (!formState.selectedProductIds.includes(Number(p.id))) {
+                        formState.selectedProductIds.push(Number(p.id));
+                      }
+                    });
+                    renderDiscountsTab();
+                  });
+
+                  $('#pd-clear-all-btn')?.addEventListener('click', () => {
+                    syncInputs();
+                    formState.selectedProductIds = [];
+                    renderDiscountsTab();
+                  });
+
+                  const cancelEdit = () => { resetFormState(); renderDiscountsTab(); };
+                  $('#btn-cancel-edit-discount')?.addEventListener('click', cancelEdit);
+                  $('#btn-cancel-edit-discount-bottom')?.addEventListener('click', cancelEdit);
+
+                  // Submit create / update selected product discount
+                  $('#product-discount-form')?.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    syncInputs();
+                    if (!formState.selectedProductIds.length) {
+                      toast('Please select at least one product before applying a discount.');
+                      return;
+                    }
+                    const valNum = Number(formState.discountValue);
+                    if (!isFinite(valNum) || valNum <= 0) {
+                      toast('Please enter a valid discount value greater than 0.');
+                      return;
+                    }
+                    if (formState.discountType === 'percentage' && valNum >= 100) {
+                      toast('Percentage discount must be less than 100%.');
+                      return;
+                    }
+                    const invalidProd = selectedProds.find(p => !computePreviewPrice(p.price, formState.discountType, valNum).valid);
+                    if (invalidProd) {
+                      toast(`Discount exceeds or equals the price of "${invalidProd.name}". Adjust the discount or selection.`);
+                      return;
+                    }
+
+                    const submitBtn = $('#btn-submit-product-discount');
+                    try {
+                      if (submitBtn) submitBtn.disabled = true;
+                      const url = editingDiscountId
+                        ? `/api/admin/product-discounts/${editingDiscountId}`
+                        : '/api/admin/product-discounts';
+                      const method = editingDiscountId ? 'PUT' : 'POST';
+                      const res = await fetchAuth(url, {
+                        method,
+                        body: {
+                          name: formState.name,
+                          discountType: formState.discountType,
+                          discountValue: valNum,
+                          startDate: new Date(formState.startDate).toISOString(),
+                          endDate: new Date(formState.endDate).toISOString(),
+                          description: formState.description,
+                          isActive: formState.isActive,
+                          productIds: formState.selectedProductIds
+                        }
+                      });
+                      const resp = await res.json();
+                      if (!res.ok) throw new Error(resp.error || 'Could not save product discount.');
+                      toast(resp.message || 'Product discount saved!');
+                      renderTab('coupons');
+                    } catch (err) {
+                      toast(err.message || 'Could not save discount.');
+                      if (submitBtn) submitBtn.disabled = false;
+                    }
+                  });
+
+                  // Status filter tabs
+                  $$('[data-pd-status]').forEach(btn => {
+                    btn.onclick = () => {
+                      statusFilter = btn.dataset.pdStatus;
+                      renderDiscountsTab();
+                    };
+                  });
+
+                  // Edit discount
+                  $$('.pd-edit-btn').forEach(btn => {
+                    btn.onclick = () => {
+                      const d = discountList.find(x => Number(x.id) === Number(btn.dataset.did));
+                      if (!d) return;
+                      editingDiscountId = d.id;
+                      formState = {
+                        name: d.name,
+                        discountType: d.discountType,
+                        discountValue: String(d.discountValue),
+                        startDate: toLocalInputVal(d.startDate),
+                        endDate: toLocalInputVal(d.endDate),
+                        description: d.description || '',
+                        isActive: d.isActive,
+                        selectedProductIds: [...(d.productIds || [])]
+                      };
+                      renderDiscountsTab();
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    };
+                  });
+
+                  // Deactivate / Activate toggle
+                  $$('.pd-toggle-btn').forEach(btn => {
+                    btn.onclick = async () => {
+                      const did = Number(btn.dataset.did);
+                      const nextActive = btn.dataset.active !== '1';
+                      try {
+                        const r = await fetchAuth(`/api/admin/product-discounts/${did}`, {
+                          method: 'PUT',
+                          body: { isActive: nextActive }
+                        });
+                        const resp = await r.json();
+                        if (!r.ok) throw new Error(resp.error || 'Could not update discount.');
+                        toast(nextActive ? 'Product discount activated.' : 'Product discount deactivated.');
+                        renderTab('coupons');
+                      } catch (err) {
+                        toast(err.message || 'Could not toggle discount status.');
+                      }
+                    };
+                  });
+
+                  // Delete discount
+                  $$('.pd-delete-btn').forEach(btn => {
+                    btn.onclick = async () => {
+                      if (!confirm('Remove this selected product discount? Eligible products will immediately revert to their original prices.')) return;
+                      try {
+                        const r = await fetchAuth(`/api/admin/product-discounts/${btn.dataset.did}`, { method: 'DELETE' });
+                        const resp = await r.json();
+                        if (!r.ok) throw new Error(resp.error || 'Could not delete discount.');
+                        toast('Product discount removed.');
+                        renderTab('coupons');
+                      } catch (err) {
+                        toast(err.message || 'Could not delete discount.');
+                      }
+                    };
+                  });
+                } else {
+                  // Preserved Promo Coupons event handlers
+                  $('#create-coupon-form')?.addEventListener('submit', async e => {
+                    e.preventDefault();
+                    const d = Object.fromEntries(new FormData(e.target));
+                    d.code = d.code.toUpperCase().trim();
+                    try {
+                      const r = await fetchAuth('/api/admin/coupons', { method: 'POST', body: d });
+                      const data = await r.json();
+                      if (!r.ok) throw new Error(data.error);
+                      toast(`Coupon "${d.code}" successfully registered.`);
+                      renderTab('coupons');
+                    } catch (err) {
+                      toast(err.message || 'Could not create coupon.');
+                    }
+                  });
+
+                  $$('.delete-coupon-btn').forEach(btn => {
+                    btn.onclick = async () => {
+                      if (!confirm('Are you sure you want to delete this promotional coupon?')) return;
+                      try {
+                        const r = await fetchAuth(`/api/admin/coupons/${btn.dataset.cid}`, { method: 'DELETE' });
+                        if (!r.ok) throw new Error((await r.json()).error);
+                        toast('Coupon deleted.');
+                        renderTab('coupons');
+                      } catch (err) {
+                        toast(err.message || 'Could not delete coupon.');
+                      }
+                    };
+                  });
                 }
               };
 
-              $$('.delete-coupon-btn').forEach(btn => {
-                btn.onclick = async () => {
-                  if (!confirm('Are you sure you want to delete this promotional coupon?')) return;
-                  try {
-                    const r = await fetchAuth(`/api/admin/coupons/${btn.dataset.cid}`, { method: 'DELETE' });
-                    if (!r.ok) throw new Error((await r.json()).error);
-                    toast('Coupon deleted.');
-                    renderTab('coupons');
-                  } catch (err) {
-                    toast(err.message || 'Could not delete coupon.');
-                  }
-                };
-              });
+              renderDiscountsTab();
 
             } catch (err) {
               container.innerHTML = '<p class="muted">Could not load promotional privileges.</p>';
@@ -7971,12 +10508,13 @@ else if (tabName === 'returns') {
           else if (tabName === 'inventory') {
             container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading inventory stock records &amp; alerts...</p>';
             try {
-              const res = await fetch('/api/products');
+              const res = await fetchAuth('/api/admin/products');
               const products = await res.json();
               const pList = Array.isArray(products) ? products : [];
 
               let invFilter = 'all';
               let invSearch = '';
+              let expandedPid = null;
 
               function renderInventoryView() {
                 let filtered = [...pList];
@@ -7984,6 +10522,8 @@ else if (tabName === 'returns') {
                   filtered = filtered.filter(p => p.stock > 0 && p.stock <= 3);
                 } else if (invFilter === 'out') {
                   filtered = filtered.filter(p => p.stock === 0);
+                } else if (invFilter === 'variant-oos') {
+                  filtered = filtered.filter(p => Array.isArray(p.variants) && p.variants.some(v => !v.isActive || Number(v.stock || 0) === 0));
                 }
                 if (invSearch) {
                   const s = invSearch.toLowerCase();
@@ -7997,6 +10537,7 @@ else if (tabName === 'returns') {
                 const totalUnits = pList.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
                 const lowStockList = pList.filter(p => p.stock > 0 && p.stock <= 3);
                 const outStockList = pList.filter(p => p.stock === 0);
+                const variantOosList = pList.filter(p => Array.isArray(p.variants) && p.variants.some(v => !v.isActive || Number(v.stock || 0) === 0));
                 const totalValuation = pList.reduce((acc, p) => acc + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
 
                 container.innerHTML = `
@@ -8026,8 +10567,8 @@ else if (tabName === 'returns') {
                   <div class="admin-surface-card">
                     <div class="card-head-between" style="margin-bottom:1.2rem">
                       <div>
-                        <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.3rem;color:#111827">Atelier Inventory Control &amp; Atomic Restock (${pList.length})</h2>
-                        <p class="muted" style="margin:0">Real-time stock adjustments synchronized with customer bag deductions and database locks.</p>
+                        <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.3rem;color:#111827">Atelier Inventory Control &amp; Variant Stock (${pList.length})</h2>
+                        <p class="muted" style="margin:0">Manage total and size-wise / colour-wise stock independently with automatic storefront synchronization.</p>
                       </div>
                       <div style="display:flex;gap:10px">
                         <input type="text" id="inv-search-input" value="${esc(invSearch)}" placeholder="Search silhouette, name..." class="admin-form-control" style="width:220px;padding:6px 12px">
@@ -8038,6 +10579,7 @@ else if (tabName === 'returns') {
                       <button class="support-filter-btn ${invFilter === 'all' ? 'active' : ''}" data-inv-filter="all">All Styles (${pList.length})</button>
                       <button class="support-filter-btn ${invFilter === 'low' ? 'active' : ''}" data-inv-filter="low">Low Stock Alerts (${lowStockList.length})</button>
                       <button class="support-filter-btn ${invFilter === 'out' ? 'active' : ''}" data-inv-filter="out">Out of Stock (${outStockList.length})</button>
+                      <button class="support-filter-btn ${invFilter === 'variant-oos' ? 'active' : ''}" data-inv-filter="variant-oos">Variant Out of Stock (${variantOosList.length})</button>
                     </div>
 
                     <div class="admin-table-wrap">
@@ -8049,21 +10591,27 @@ else if (tabName === 'returns') {
                             <th>Retail Price</th>
                             <th>Current Stock</th>
                             <th>Stock Status</th>
-                            <th>Instant Restock Actions</th>
+                            <th>Instant Restock &amp; Variant Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           ${filtered.map(p => {
-                            const isOut = p.stock === 0;
-                            const isLow = p.stock > 0 && p.stock <= 3;
-                            return `
+                  const isOut = p.stock === 0;
+                  const isLow = p.stock > 0 && p.stock <= 3;
+                  const vList = Array.isArray(p.variants) ? p.variants : [];
+                  const oosCount = vList.filter(v => !v.isActive || Number(v.stock || 0) === 0).length;
+                  const isExpanded = expandedPid === p.id;
+                  return `
                               <tr>
                                 <td>
                                   <div style="display:flex;align-items:center;gap:12px">
                                     <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:40px;height:52px;object-fit:cover;border-radius:4px;border:1px solid #E2E8F0">
                                     <div>
                                       <strong style="color:#0F172A;font-size:13.5px">${esc(p.name)}</strong>
-                                      <div style="font-size:11px;color:#64748B">ID #${p.id} &middot; Silhouette: ${esc(p.type || 'Couture')}</div>
+                                      <div style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+                                        <span>ID #${p.id} &middot; ${esc(p.type || 'Couture')}</span>
+                                        ${renderPublishStatusPill(p.publishStatus)}
+                                      </div>
                                     </div>
                                   </div>
                                 </td>
@@ -8071,6 +10619,7 @@ else if (tabName === 'returns') {
                                 <td><strong>${money(p.price)}</strong></td>
                                 <td>
                                   <strong style="font-size:15px;color:${isOut ? '#DC2626' : (isLow ? '#D97706' : '#0F172A')}">${p.stock}</strong> units
+                                  ${vList.length ? `<div style="font-size:11px;color:#64748B">${vList.length} variants${oosCount > 0 ? ` · <span style="color:#DC2626">${oosCount} out</span>` : ''}</div>` : ''}
                                 </td>
                                 <td>
                                   ${isOut ? `
@@ -8082,19 +10631,83 @@ else if (tabName === 'returns') {
                                   `)}
                                 </td>
                                 <td>
-                                  <div style="display:flex;align-items:center;gap:6px">
-                                    <div class="admin-stock-control" style="margin-right:6px">
+                                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                                    <div class="admin-stock-control" style="margin-right:4px">
                                       <button class="admin-stock-btn dec-stock-btn" data-pid="${p.id}" data-current="${p.stock}">-</button>
                                       <span class="admin-stock-num">${p.stock}</span>
                                       <button class="admin-stock-btn inc-stock-btn" data-pid="${p.id}" data-current="${p.stock}">+</button>
                                     </div>
                                     <button class="btn sm quick-add-stock-btn" data-pid="${p.id}" data-current="${p.stock}" data-add="5" style="background:#EEF2FF;color:#4F46E5;border:1px solid #C7D2FE;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer">+5</button>
                                     <button class="btn sm quick-add-stock-btn" data-pid="${p.id}" data-current="${p.stock}" data-add="10" style="background:#EEF2FF;color:#4F46E5;border:1px solid #C7D2FE;border-radius:4px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer">+10</button>
+                                    <button class="btn sm inv-toggle-variants-btn" data-pid="${p.id}" style="background:${isExpanded ? '#1E1E20' : '#FFFFFF'};color:${isExpanded ? '#FFFFFF' : '#1E1E20'};border:1px solid #D1D5DB;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">
+                                      ${isExpanded ? 'Hide Variants ▲' : `Size/Colour (${vList.length}) ▼`}
+                                    </button>
+                                    <button class="btn sm inv-manage-variants-modal-btn" data-pid="${p.id}" style="background:#FAF5EB;color:#8C6B28;border:1px solid #E5D4B3;border-radius:4px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer">
+                                      Edit Matrix
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
+                              ${isExpanded ? `
+                                <tr>
+                                  <td colspan="6" style="background:#F9FAFB;padding:12px 16px;border-bottom:2px solid #E5E7EB">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                                      <strong style="font-size:0.84rem;color:#111827">Size-Wise &amp; Colour-Wise Stock for ${esc(p.name)}</strong>
+                                      <span style="font-size:0.76rem;color:#6B7280">Adjust any individual size × colour combination below</span>
+                                    </div>
+                                    ${vList.length ? `
+                                      <div class="admin-variant-matrix-wrap" style="max-height:240px">
+                                        <table class="admin-variant-matrix">
+                                          <thead>
+                                            <tr>
+                                              <th>Colour</th>
+                                              <th>Size</th>
+                                              <th>Status</th>
+                                              <th>Stock Quantity</th>
+                                              <th>Quick Update</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            ${vList.map(v => `
+                                              <tr class="${!v.isActive ? 'variant-row-inactive' : ''}">
+                                                <td>
+                                                  <span style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
+                                                    <span class="admin-color-chip-dot" style="background:${esc(v.colorHex || '#5B1835')}"></span>
+                                                    ${esc(v.colorName)}
+                                                  </span>
+                                                </td>
+                                                <td><strong>${esc(v.size)}</strong></td>
+                                                <td>
+                                                  ${!v.isActive
+                                                    ? '<span class="admin-pill archived" style="font-size:0.68rem">Disabled</span>'
+                                                    : (v.stock <= 0
+                                                      ? '<span class="admin-pill warn" style="background:#FEE2E2;color:#991B1B;font-size:0.68rem">Out of Stock</span>'
+                                                      : (v.stock <= 2
+                                                        ? '<span class="admin-pill warn" style="background:#FEF3C7;color:#92400E;font-size:0.68rem">Low Stock</span>'
+                                                        : '<span class="admin-pill published" style="font-size:0.68rem">Available</span>'))}
+                                                </td>
+                                                <td>
+                                                  <div style="display:inline-flex;align-items:center;gap:4px">
+                                                    <button class="admin-stock-btn inv-var-delta-btn" data-pid="${p.id}" data-vid="${v.id}" data-delta="-1">-</button>
+                                                    <input type="number" min="0" class="admin-variant-stock-input inv-var-direct-input" data-pid="${p.id}" data-vid="${v.id}" value="${v.stock}">
+                                                    <button class="admin-stock-btn inv-var-delta-btn" data-pid="${p.id}" data-vid="${v.id}" data-delta="1">+</button>
+                                                  </div>
+                                                </td>
+                                                <td>
+                                                  <button class="btn sm inv-var-save-btn" data-pid="${p.id}" data-vid="${v.id}" style="background:#1E1E20;color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer">Save</button>
+                                                  <button class="btn sm inv-var-toggle-btn" data-pid="${p.id}" data-vid="${v.id}" data-active="${v.isActive ? '1' : '0'}" style="background:#fff;color:#374151;border:1px solid #D1D5DB;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;margin-left:4px">${v.isActive ? 'Disable' : 'Enable'}</button>
+                                                </td>
+                                              </tr>
+                                            `).join('')}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    ` : '<p class="muted" style="font-size:0.82rem;margin:0">No variant combinations configured yet. Click "Edit Matrix" to add sizes &amp; colours.</p>'}
+                                  </td>
+                                </tr>
+                              ` : ''}
                             `;
-                          }).join('')}
+                }).join('')}
                         </tbody>
                       </table>
                     </div>
@@ -8110,6 +10723,70 @@ else if (tabName === 'returns') {
                   btn.onclick = () => {
                     invFilter = btn.dataset.invFilter;
                     renderInventoryView();
+                  };
+                });
+
+                $$('.inv-toggle-variants-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = Number(btn.dataset.pid);
+                    expandedPid = expandedPid === pid ? null : pid;
+                    renderInventoryView();
+                  };
+                });
+
+                $$('.inv-manage-variants-modal-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = Number(btn.dataset.pid);
+                    const prod = pList.find(x => Number(x.id) === pid);
+                    if (prod) openAdminVariantStockModal(prod, () => renderTab('inventory'));
+                  };
+                });
+
+                const applyVariantStockUpdate = async (pid, payload) => {
+                  try {
+                    const r = await fetchAuth(`/api/products/${pid}/variants/stock`, {
+                      method: 'PUT',
+                      body: payload
+                    });
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.error || 'Could not update variant stock');
+                    const prod = pList.find(x => Number(x.id) === Number(pid));
+                    if (prod) {
+                      prod.stock = d.totalStock;
+                      prod.variants = d.variants;
+                    }
+                    toast(`Variant stock updated (Total: ${d.totalStock} units).`);
+                    renderInventoryView();
+                  } catch (err) {
+                    toast(err.message || 'Could not adjust variant stock');
+                  }
+                };
+
+                $$('.inv-var-delta-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    applyVariantStockUpdate(btn.dataset.pid, {
+                      variantId: Number(btn.dataset.vid),
+                      delta: Number(btn.dataset.delta)
+                    });
+                  };
+                });
+
+                $$('.inv-var-save-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = btn.dataset.pid;
+                    const vid = Number(btn.dataset.vid);
+                    const inputEl = container.querySelector(`.inv-var-direct-input[data-vid="${vid}"]`);
+                    const stockVal = Math.max(0, parseInt(inputEl?.value, 10) || 0);
+                    applyVariantStockUpdate(pid, { variantId: vid, stock: stockVal });
+                  };
+                });
+
+                $$('.inv-var-toggle-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = btn.dataset.pid;
+                    const vid = Number(btn.dataset.vid);
+                    const nextActive = btn.dataset.active !== '1';
+                    applyVariantStockUpdate(pid, { variantId: vid, isActive: nextActive });
                   };
                 });
 
@@ -8162,7 +10839,7 @@ else if (tabName === 'returns') {
           else if (tabName === 'photography' || tabName === 'tryon') {
             container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading Atelier Photography Studio &amp; Multi-Angle Gallery Quality Desk...</p>';
             try {
-              const res = await fetch('/api/products');
+              const res = await fetchAuth('/api/admin/products');
               const products = await res.json();
               const productList = Array.isArray(products) ? products : [];
 
@@ -8231,18 +10908,18 @@ else if (tabName === 'returns') {
                       </thead>
                       <tbody id="photo-studio-table-body">
                         ${productList.map(p => {
-                          const imgs = (Array.isArray(p.images) && p.images.length) ? p.images : [p.image || 'images/p1.jpg'];
-                          const count = imgs.length;
-                          const isComplete = count >= 5;
+                const imgs = (Array.isArray(p.images) && p.images.length) ? p.images : [p.image || 'images/p1.jpg'];
+                const count = imgs.length;
+                const isComplete = count >= 5;
 
-                          const angleLabels = imgs.map((u, i) => getAngleMeta(u, i, count).short);
-                          const hasFront = angleLabels.some(l => l.includes('Front'));
-                          const hasCloseup = angleLabels.some(l => l.includes('Close'));
-                          const hasSide = angleLabels.some(l => l.includes('Side'));
-                          const hasBack = angleLabels.some(l => l.includes('Back'));
-                          const hasDetail = angleLabels.some(l => l.includes('Detail'));
+                const angleLabels = imgs.map((u, i) => getAngleMeta(u, i, count).short);
+                const hasFront = angleLabels.some(l => l.includes('Front'));
+                const hasCloseup = angleLabels.some(l => l.includes('Close'));
+                const hasSide = angleLabels.some(l => l.includes('Side'));
+                const hasBack = angleLabels.some(l => l.includes('Back'));
+                const hasDetail = angleLabels.some(l => l.includes('Detail'));
 
-                          return `
+                return `
                             <tr data-status="${isComplete ? 'complete' : 'single'}" data-cat="${esc(p.cat || '')}" data-type="${esc(p.type || '')}">
                               <td>
                                 <div style="display:flex;align-items:center;gap:12px">
@@ -8285,7 +10962,7 @@ else if (tabName === 'returns') {
                               </td>
                             </tr>
                           `;
-                        }).join('')}
+              }).join('')}
                       </tbody>
                     </table>
                   </div>
@@ -8332,20 +11009,38 @@ else if (tabName === 'returns') {
           else if (tabName === 'crud') {
             container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading catalog management...</p>';
             try {
-              const res = await fetch('/api/products');
+              const res = await fetchAuth('/api/admin/products');
               const products = await res.json();
               const productList = Array.isArray(products) ? products : [];
+
+              let catalogStatusFilter = 'all';
+
+              const publishedCount = productList.filter(p => (p.publishStatus || 'published') === 'published').length;
+              const draftCount = productList.filter(p => (p.publishStatus || 'published') === 'draft').length;
+              const archivedCount = productList.filter(p => (p.publishStatus || 'published') === 'archived').length;
 
               container.innerHTML = `
                 <!-- Garment Creation Form -->
                 <div class="admin-surface-card" style="margin-bottom:2rem">
-                  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:0.4rem;color:#111827">Publish New Garment Creation</h2>
-                  <p class="muted" style="margin-bottom:1.4rem">Publish new handcrafted additions directly into the PostgreSQL catalog.</p>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:1.2rem">
+                    <div>
+                      <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.3rem;color:#111827">Add New Garment Creation</h2>
+                      <p class="muted" style="margin:0">Publish directly to the storefront or save incomplete creations as a Draft for later editing.</p>
+                    </div>
+                  </div>
                   
-                  <form id="admin-product-form" style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
-                    <div style="grid-column:1/-1">
+                  <form id="admin-product-form" novalidate style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+                    <div>
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Garment Name</label>
-                      <input name="name" required placeholder="e.g. Royal Organza Zari Saree" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                      <input name="name" placeholder="e.g. Royal Organza Zari Saree" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                    </div>
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Product Status</label>
+                      <select name="publishStatus" id="create-publish-status" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                        <option value="published">Published (Live on Storefront)</option>
+                        <option value="draft">Draft (Save Incomplete / Hidden)</option>
+                        <option value="archived">Archived (Unlisted)</option>
+                      </select>
                     </div>
                     <div>
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Category</label>
@@ -8356,7 +11051,7 @@ else if (tabName === 'returns') {
                     </div>
                     <div>
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Silhouette / Type</label>
-                      <input name="type" required placeholder="e.g. Sarees, Suit sets, Blazers" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                      <input name="type" placeholder="e.g. Sarees, Suit sets, Blazers" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
                     </div>
                     <div>
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Collection</label>
@@ -8369,15 +11064,40 @@ else if (tabName === 'returns') {
                     </div>
                     <div>
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Selling Price (INR)</label>
-                      <input name="price" type="number" required placeholder="6990" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                      <input name="price" type="number" min="0" placeholder="6990" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
                     </div>
                     <div>
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Original Price / MRP</label>
-                      <input name="old" type="number" placeholder="8490" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                      <input name="old" type="number" min="0" placeholder="8490" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
                     </div>
                     <div>
-                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Available Stock Units</label>
-                      <input name="stock" type="number" value="8" required style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Total Combined Stock Units</label>
+                      <input name="stock" id="create-product-total-stock" type="number" min="0" value="10" style="width:100%;background:#F9FAFB;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem" readonly title="Automatically calculated from Size × Colour variant stock below">
+                    </div>
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Applicable GST Rate &amp; Tax Type</label>
+                      <select name="gstPreset" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.84rem">
+                        ${(() => {
+                          const opts = (window.SatinoGST && window.SatinoGST.PRODUCT_GST_OPTIONS) || [
+                            { rate: 5, type: 'auto', label: '5% GST — Auto (2.5% CGST + 2.5% SGST / 5% IGST)' },
+                            { rate: 5, type: 'cgst_sgst', label: '5% GST — CGST 2.5% + SGST 2.5%' },
+                            { rate: 5, type: 'igst', label: '5% GST — IGST 5%' },
+                            { rate: 2.5, type: 'cgst_only', label: '2.5% GST — CGST 2.5%' },
+                            { rate: 2.5, type: 'sgst_only', label: '2.5% GST — SGST 2.5%' },
+                            { rate: 2.5, type: 'auto', label: '2.5% GST — Auto (1.25% CGST + 1.25% SGST / 2.5% IGST)' },
+                            { rate: 0, type: 'exempt', label: '0% — GST Exempt' }
+                          ];
+                          const defKey = `${Number(ACTIVE_GST_CONFIG.defaultGstRate ?? 5)}|auto`;
+                          return opts.map(o => {
+                            const val = `${o.rate}|${o.type}`;
+                            return `<option value="${val}" ${val === defKey ? 'selected' : ''}>${esc(o.label)}</option>`;
+                          }).join('');
+                        })()}
+                      </select>
+                    </div>
+                    <div>
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">HSN / SAC Code</label>
+                      <input name="hsnCode" value="${esc(ACTIVE_GST_CONFIG.defaultHsnCode || '6204')}" placeholder="6204" style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem">
                     </div>
                     <div style="grid-column:1/-1">
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Fabric &amp; Craft Details</label>
@@ -8386,6 +11106,14 @@ else if (tabName === 'returns') {
                     <div style="grid-column:1/-1">
                       <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.3rem">Garment Description</label>
                       <textarea name="desc" rows="3" placeholder="Artisanal description of the piece..." style="width:100%;background:#fff;border:1px solid #D1D5DB;border-radius:6px;padding:0.55rem;font-size:0.86rem"></textarea>
+                    </div>
+
+                    <!-- Size & Color Variants + Stock Matrix Builder -->
+                    <div style="grid-column:1/-1">
+                      <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:0.35rem">
+                        Product Sizes, Colours &amp; Variant Stock Matrix
+                      </label>
+                      <div id="create-product-variant-builder"></div>
                     </div>
 
                     <!-- Multi-Angle Product Photography Section -->
@@ -8409,77 +11137,247 @@ else if (tabName === 'returns') {
                       </div>
                     </div>
 
-                    <div style="grid-column:1/-1;margin-top:0.4rem">
-                      <button class="btn" type="submit" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer">Publish to Catalog</button>
+                    <div style="grid-column:1/-1;margin-top:0.4rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                      <button class="btn" type="submit" id="btn-publish-new-product" style="background:#1E1E20;color:#fff;border:none;border-radius:6px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer">Publish to Catalog</button>
+                      <button class="btn ghost" type="button" id="btn-save-new-draft" style="background:#FFFBEB;color:#92400E;border:1px solid #D97706;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer">Save as Draft</button>
                     </div>
                   </form>
                 </div>
 
                 <!-- Catalog Table -->
                 <div class="admin-surface-card">
-                  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.2rem;color:#111827">Garment Inventory Catalog (${productList.length} Creations)</h2>
+                  <div class="card-head-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:10px">
+                    <div>
+                      <h2 style="font-size:1.25rem;font-weight:700;margin:0 0 0.25rem;color:#111827">Garment Inventory Catalog (${productList.length} Creations)</h2>
+                      <p class="muted" style="margin:0;font-size:0.84rem">Manage published creations, edit or publish drafts, and configure size &amp; colour variants.</p>
+                    </div>
+                  </div>
+
+                  <div class="support-filter-tabs" id="crud-status-tabs">
+                    <button class="support-filter-btn active" data-crud-status="all">All Creations (${productList.length})</button>
+                    <button class="support-filter-btn" data-crud-status="published">Published (${publishedCount})</button>
+                    <button class="support-filter-btn" data-crud-status="draft">Drafts (${draftCount})</button>
+                    <button class="support-filter-btn" data-crud-status="archived">Archived (${archivedCount})</button>
+                  </div>
+
                   <div class="admin-table-wrap">
-                    <table class="admin-table">
+                    <table class="admin-table" id="admin-product-table">
                       <thead>
                         <tr>
                           <th>Photo</th>
                           <th>Garment Name</th>
-                          <th>Category &amp; Type</th>
+                          <th>Status</th>
+                          <th>Category &amp; Variants</th>
                           <th>Photography Suite</th>
                           <th>Price</th>
                           <th>Stock Level</th>
-                          <th>Action</th>
+                          <th style="min-width:190px">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        ${productList.map(p => {
-                          const pImgs = (Array.isArray(p.images) && p.images.length) ? p.images : [p.image || 'images/p1.jpg'];
-                          const imgCount = pImgs.length;
-                          return `
-                            <tr>
-                              <td>
-                                <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:40px;height:52px;object-fit:cover;border-radius:4px;border:1px solid #E5E7EB">
-                              </td>
-                              <td>
-                                <strong>${esc(p.name)}</strong>
-                                <div style="font-size:0.76rem;color:#6B7280">${esc(p.fabric || 'Luxury weave')}</div>
-                              </td>
-                              <td>
-                                <span class="admin-pill sage">${p.cat === 'ethnic' ? 'Ethnic' : 'Western'}</span>
-                                <span style="font-size:0.8rem;color:#6B7280;margin-left:0.3rem">${esc(p.type || '')}</span>
-                              </td>
-                              <td>
-                                <div style="display:flex;align-items:center;gap:6px">
-                                  <span class="admin-pill ${imgCount >= 5 ? 'sage' : ''}" style="font-size:0.75rem;padding:3px 8px">
-                                    📸 ${imgCount} Angle${imgCount !== 1 ? 's' : ''}
-                                  </span>
-                                  <button class="btn sm ghost admin-crud-manage-photos-btn" data-pid="${p.id}" title="Manage Photography Suite" style="padding:2px 8px;font-size:0.72rem;border-color:#D1D5DB;cursor:pointer">
-                                    📸 Manage
-                                  </button>
-                                </div>
-                              </td>
-                              <td>
-                                <strong>${money(p.price)}</strong>
-                                ${p.old ? `<span style="font-size:0.76rem;color:#9CA3AF;text-decoration:line-through;margin-left:0.3rem">${money(p.old)}</span>` : ''}
-                              </td>
-                              <td>
-                                <div class="admin-stock-control">
-                                  <button class="admin-stock-btn dec-stock-btn" data-pid="${p.id}" data-current="${p.stock}">-</button>
-                                  <span class="admin-stock-num">${p.stock}</span>
-                                  <button class="admin-stock-btn inc-stock-btn" data-pid="${p.id}" data-current="${p.stock}">+</button>
-                                </div>
-                              </td>
-                              <td>
-                                <button class="link delete-product-btn" data-pid="${p.id}" style="color:#b91c1c;font-size:0.85rem;background:none;border:none;cursor:pointer">Remove</button>
-                              </td>
-                            </tr>
-                          `;
-                        }).join('')}
-                      </tbody>
+                      <tbody id="crud-products-tbody"></tbody>
                     </table>
                   </div>
                 </div>
               `;
+
+              // Initialize Variant Builder in Creation Form
+              const createTotalStockInput = $('#create-product-total-stock');
+              const createVariantBuilder = createAdminVariantBuilder($('#create-product-variant-builder'), {
+                sizes: ['XS', 'S', 'M', 'L', 'XL'],
+                colors: [
+                  { name: 'Royal Wine', hex: '#5B1835' },
+                  { name: 'Antique Gold', hex: '#C6A15B' }
+                ],
+                defaultVariantStock: 2
+              }, (tot) => {
+                if (createTotalStockInput) createTotalStockInput.value = tot;
+              });
+
+              const renderCatalogRows = () => {
+                const tbody = $('#crud-products-tbody');
+                if (!tbody) return;
+                const filtered = catalogStatusFilter === 'all'
+                  ? productList
+                  : productList.filter(p => (p.publishStatus || 'published') === catalogStatusFilter);
+
+                if (!filtered.length) {
+                  tbody.innerHTML = `
+                    <tr>
+                      <td colspan="8" style="text-align:center;padding:2.2rem 1rem;color:#6B7280">
+                        No ${catalogStatusFilter === 'all' ? '' : catalogStatusFilter + ' '}products found.
+                      </td>
+                    </tr>`;
+                  return;
+                }
+
+                tbody.innerHTML = filtered.map(p => {
+                  const pImgs = (Array.isArray(p.images) && p.images.length) ? p.images : [p.image || 'images/p1.jpg'];
+                  const imgCount = pImgs.length;
+                  const pStatus = (p.publishStatus || 'published').toLowerCase();
+                  const szCount = Array.isArray(p.sizes) ? p.sizes.length : 0;
+                  const colList = Array.isArray(p.colors) ? p.colors : [];
+                  const varCount = Array.isArray(p.variants) ? p.variants.length : 0;
+                  return `
+                    <tr>
+                      <td>
+                        <img src="${p.image || 'images/p1.jpg'}" alt="${esc(p.name)}" style="width:40px;height:52px;object-fit:cover;border-radius:4px;border:1px solid #E5E7EB">
+                      </td>
+                      <td>
+                        <strong>${esc(p.name)}</strong>
+                        <div style="font-size:0.76rem;color:#6B7280">${esc(p.fabric || 'Craft details pending')}</div>
+                      </td>
+                      <td>
+                        ${renderPublishStatusPill(pStatus)}
+                      </td>
+                      <td>
+                        <div style="margin-bottom:4px">
+                          <span class="admin-pill sage">${p.cat === 'ethnic' ? 'Ethnic' : 'Western'}</span>
+                          <span style="font-size:0.8rem;color:#6B7280;margin-left:0.3rem">${esc(p.type || '')}</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                          <span style="font-size:0.72rem;color:#4B5563">${szCount} sizes · ${colList.length} colours</span>
+                          <span style="display:inline-flex;gap:3px">
+                            ${colList.slice(0, 4).map(c => `<span title="${esc(c.name || '')}" style="width:10px;height:10px;border-radius:50%;background:${esc(c.hex || '#5B1835')};border:1px solid rgba(0,0,0,0.2);display:inline-block"></span>`).join('')}
+                          </span>
+                          <button class="btn sm ghost admin-crud-variants-btn" data-pid="${p.id}" style="padding:1px 7px;font-size:0.7rem;border:1px solid #D1D5DB;border-radius:4px;background:#fff;cursor:pointer;font-weight:600">
+                            Stock Matrix (${varCount})
+                          </button>
+                        </div>
+                      </td>
+                      <td>
+                        <div style="display:flex;align-items:center;gap:6px">
+                          <span class="admin-pill ${imgCount >= 5 ? 'sage' : ''}" style="font-size:0.75rem;padding:3px 8px">
+                            📸 ${imgCount} Angle${imgCount !== 1 ? 's' : ''}
+                          </span>
+                          <button class="btn sm ghost admin-crud-manage-photos-btn" data-pid="${p.id}" title="Manage Photography Suite" style="padding:2px 8px;font-size:0.72rem;border-color:#D1D5DB;cursor:pointer">
+                            📸 Manage
+                          </button>
+                        </div>
+                      </td>
+                      <td>
+                        <strong>${money(p.price)}</strong>
+                        ${p.old ? `<span style="font-size:0.76rem;color:#9CA3AF;text-decoration:line-through;margin-left:0.3rem">${money(p.old)}</span>` : ''}
+                        <div style="font-size:0.72rem;color:#475569;margin-top:2px">GST: <strong>${Number(p.gstRate ?? p.gst_rate ?? 5)}%</strong>${(p.gstType || 'auto') !== 'auto' ? ` (${esc((p.gstType || '').replace('_', ' '))})` : ''}</div>
+                      </td>
+                      <td>
+                        <div class="admin-stock-control">
+                          <button class="admin-stock-btn dec-stock-btn" data-pid="${p.id}" data-current="${p.stock}">-</button>
+                          <span class="admin-stock-num">${p.stock}</span>
+                          <button class="admin-stock-btn inc-stock-btn" data-pid="${p.id}" data-current="${p.stock}">+</button>
+                        </div>
+                      </td>
+                      <td>
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                          ${pStatus !== 'published' ? `
+                            <button class="btn sm publish-status-btn" data-pid="${p.id}" data-target="published" title="Publish to storefront" style="padding:4px 9px;font-size:0.73rem;border:none;border-radius:5px;cursor:pointer;background:#166534;color:#fff;font-weight:600">Publish</button>
+                          ` : `
+                            <button class="btn sm publish-status-btn" data-pid="${p.id}" data-target="draft" title="Move back to Draft" style="padding:4px 8px;font-size:0.72rem;border:1px solid #D97706;border-radius:5px;cursor:pointer;background:#FFFBEB;color:#92400E;font-weight:600">Draft</button>
+                          `}
+                          <button class="btn sm ghost edit-product-btn" data-pid="${p.id}" title="Edit Product &amp; Variants" style="padding:4px 9px;font-size:0.75rem;border:1px solid #D1D5DB;border-radius:5px;cursor:pointer;background:#fff;color:#1E1E20;font-weight:600;display:inline-flex;align-items:center;gap:4px">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            Edit
+                          </button>
+                          <button class="link delete-product-btn" data-pid="${p.id}" style="color:#b91c1c;font-size:0.8rem;background:none;border:none;cursor:pointer">Remove</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('');
+
+                // Bind row actions after each render
+                $$('.admin-crud-manage-photos-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = Number(btn.dataset.pid);
+                    openAdminPhotoStudioModal(pid, () => renderTab('crud'));
+                  };
+                });
+
+                $$('.admin-crud-variants-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = Number(btn.dataset.pid);
+                    const prod = productList.find(x => Number(x.id) === pid);
+                    if (prod) openAdminVariantStockModal(prod, () => renderTab('crud'));
+                  };
+                });
+
+                $$('.publish-status-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const pid = Number(btn.dataset.pid);
+                    const targetStatus = btn.dataset.target;
+                    try {
+                      const r = await fetchAuth(`/api/products/${pid}/status`, {
+                        method: 'PUT',
+                        body: { status: targetStatus }
+                      });
+                      const resp = await r.json();
+                      if (!r.ok) throw new Error(resp.error || 'Could not update status.');
+                      toast(resp.message || `Product status updated to "${targetStatus}".`);
+                      renderTab('crud');
+                    } catch (err) {
+                      toast(err.message || 'Could not change product status.');
+                    }
+                  };
+                });
+
+                $$('.inc-stock-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const pid = btn.dataset.pid;
+                    const newStock = Number(btn.dataset.current) + 1;
+                    try {
+                      await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                      renderTab('crud');
+                    } catch (err) { toast('Could not adjust stock'); }
+                  };
+                });
+
+                $$('.dec-stock-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    const pid = btn.dataset.pid;
+                    const newStock = Math.max(0, Number(btn.dataset.current) - 1);
+                    try {
+                      await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
+                      renderTab('crud');
+                    } catch (err) { toast('Could not adjust stock'); }
+                  };
+                });
+
+                $$('.edit-product-btn').forEach(btn => {
+                  btn.onclick = () => {
+                    const pid = Number(btn.dataset.pid);
+                    const p = productList.find(x => Number(x.id) === pid) || PRODUCTS.find(x => Number(x.id) === pid);
+                    if (p) {
+                      openAdminEditProductModal(p, () => renderTab('crud'));
+                    }
+                  };
+                });
+
+                $$('.delete-product-btn').forEach(btn => {
+                  btn.onclick = async () => {
+                    if (!confirm('Are you sure you want to remove this garment from catalog?')) return;
+                    const pid = btn.dataset.pid;
+                    try {
+                      const r = await fetchAuth(`/api/products/${pid}`, { method: 'DELETE' });
+                      if (!r.ok) throw new Error((await r.json()).error);
+                      toast('Garment removed from catalog.');
+                      PRODUCTS = PRODUCTS.filter(p => Number(p.id) !== Number(pid));
+                      renderTab('crud');
+                    } catch (err) {
+                      toast(err.message || 'Could not delete product.');
+                    }
+                  };
+                });
+              };
+
+              // Status filter tab handlers
+              $$('#crud-status-tabs [data-crud-status]').forEach(btn => {
+                btn.onclick = () => {
+                  catalogStatusFilter = btn.dataset.crudStatus;
+                  $$('#crud-status-tabs [data-crud-status]').forEach(b => b.classList.toggle('active', b === btn));
+                  renderCatalogRows();
+                };
+              });
+
+              renderCatalogRows();
 
               const dropzone = $('#img-dropzone');
               const fileInput = $('#image-file-input');
@@ -8492,8 +11390,8 @@ else if (tabName === 'returns') {
                 if (!previewCont) return;
                 previewCont.innerHTML = createdProductPhotos.map((url, i) => `
                   <div style="position:relative;width:64px;height:80px;border-radius:6px;overflow:hidden;border:${i === 0 ? '2px solid var(--gold)' : '1px solid #D1D5DB'}">
-                    <img src="${url}" alt="Photo ${i+1}" style="width:100%;height:100%;object-fit:cover">
-                    ${i === 0 ? '<span style="position:absolute;bottom:2px;left:2px;background:var(--wine);color:#FFF;font-size:9px;padding:1px 4px;border-radius:3px;font-weight:700">★ Cover</span>' : `<span style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.6);color:#FFF;font-size:8px;padding:1px 3px;border-radius:2px">#${i+1}</span>`}
+                    <img src="${url}" alt="Photo ${i + 1}" style="width:100%;height:100%;object-fit:cover">
+                    ${i === 0 ? '<span style="position:absolute;bottom:2px;left:2px;background:var(--wine);color:#FFF;font-size:9px;padding:1px 4px;border-radius:3px;font-weight:700">★ Cover</span>' : `<span style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.6);color:#FFF;font-size:8px;padding:1px 3px;border-radius:2px">#${i + 1}</span>`}
                   </div>
                 `).join('');
               };
@@ -8528,71 +11426,67 @@ else if (tabName === 'returns') {
                 };
               }
 
-              // Manage Photography Suite in CRUD table
-              $$('.admin-crud-manage-photos-btn').forEach(btn => {
-                btn.onclick = () => {
-                  const pid = Number(btn.dataset.pid);
-                  openAdminPhotoStudioModal(pid, () => renderTab('crud'));
-                };
-              });
+              const submitNewProduct = async (overrideStatus = null) => {
+                const formEl = $('#admin-product-form');
+                const d = Object.fromEntries(new FormData(formEl));
+                const targetStatus = overrideStatus || d.publishStatus || 'published';
 
-              $('#admin-product-form').onsubmit = async e => {
-                e.preventDefault();
-                const d = Object.fromEntries(new FormData(e.target));
+                if (targetStatus === 'published') {
+                  if (!d.name || !d.name.trim()) {
+                    toast('Please enter a garment name to publish (or click Save as Draft).');
+                    return;
+                  }
+                  if (!d.price || Number(d.price) <= 0) {
+                    toast('Please enter a selling price greater than ₹0 to publish (or click Save as Draft).');
+                    return;
+                  }
+                }
+
+                const vbState = createVariantBuilder ? createVariantBuilder.getState() : null;
+                d.publishStatus = targetStatus;
                 d.image = createdProductPhotos[0] || d.image || 'images/p1.jpg';
                 d.images = createdProductPhotos;
+                if (d.gstPreset && d.gstPreset.includes('|')) {
+                  const [rStr, tStr] = d.gstPreset.split('|');
+                  d.gstRate = Number(rStr);
+                  d.gstType = tStr;
+                  delete d.gstPreset;
+                }
+                if (vbState) {
+                  d.sizes = vbState.sizes;
+                  d.colors = vbState.colors;
+                  d.variants = vbState.variants;
+                  d.stock = vbState.totalStock;
+                }
+
                 try {
                   const res = await fetchAuth('/api/products', {
                     method: 'POST',
                     body: d
                   });
                   const newP = await res.json();
-                  if (!res.ok) throw new Error(newP.error);
-                  PRODUCTS.push(newP);
-                  toast(`"${newP.name}" published with ${createdProductPhotos.length} photography angles!`);
+                  if (!res.ok) throw new Error(newP.error || 'Could not save product.');
+                  if (newP.publishStatus === 'published') {
+                    PRODUCTS.push(newP);
+                  }
+                  toast(targetStatus === 'draft'
+                    ? `"${newP.name}" saved as Draft! You can continue editing or publish it anytime.`
+                    : `"${newP.name}" published with ${newP.variants?.length || 0} size/colour variants!`);
                   renderTab('crud');
                 } catch (err) {
                   toast(err.message || 'Could not create product.');
                 }
               };
 
-              $$('.inc-stock-btn').forEach(btn => {
-                btn.onclick = async () => {
-                  const pid = btn.dataset.pid;
-                  const newStock = Number(btn.dataset.current) + 1;
-                  try {
-                    await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
-                    renderTab('crud');
-                  } catch (err) { toast('Could not adjust stock'); }
-                };
-              });
+              $('#admin-product-form').onsubmit = (e) => {
+                e.preventDefault();
+                const chosen = $('#create-publish-status')?.value || 'published';
+                submitNewProduct(chosen);
+              };
 
-              $$('.dec-stock-btn').forEach(btn => {
-                btn.onclick = async () => {
-                  const pid = btn.dataset.pid;
-                  const newStock = Math.max(0, Number(btn.dataset.current) - 1);
-                  try {
-                    await fetchAuth(`/api/admin/products/${pid}/stock`, { method: 'PUT', body: { stock: newStock } });
-                    renderTab('crud');
-                  } catch (err) { toast('Could not adjust stock'); }
-                };
-              });
-
-              $$('.delete-product-btn').forEach(btn => {
-                btn.onclick = async () => {
-                  if (!confirm('Are you sure you want to remove this garment from catalog?')) return;
-                  const pid = btn.dataset.pid;
-                  try {
-                    const r = await fetchAuth(`/api/products/${pid}`, { method: 'DELETE' });
-                    if (!r.ok) throw new Error((await r.json()).error);
-                    toast('Garment removed from catalog.');
-                    PRODUCTS = PRODUCTS.filter(p => Number(p.id) !== Number(pid));
-                    renderTab('crud');
-                  } catch (err) {
-                    toast(err.message || 'Could not delete product.');
-                  }
-                };
-              });
+              $('#btn-save-new-draft').onclick = () => {
+                submitNewProduct('draft');
+              };
 
             } catch (err) {
               container.innerHTML = '<p class="muted">Could not load catalog.</p>';
@@ -8643,7 +11537,7 @@ else if (tabName === 'returns') {
                         </div>
                       `;
                     }
-                  } catch (e) {}
+                  } catch (e) { }
                 }
                 toast('Collection photography uploaded.');
               };
@@ -8764,9 +11658,14 @@ else if (tabName === 'returns') {
                                 </div>
                               </td>
                               <td>
-                                <button class="btn sm btn-ledger-invoice" data-oid="${o.id}" style="background:#4F46E5;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
-                                  <span>📄</span> Tax Invoice
-                                </button>
+                                <div style="display:inline-flex;gap:6px;align-items:center">
+                                  <button class="btn sm btn-ledger-invoice" data-oid="${o.id}" style="background:#4F46E5;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+                                    <span>📄</span> Tax Invoice
+                                  </button>
+                                  <button class="btn sm btn-ledger-download-pdf" data-oid="${o.id}" title="Download Individual Invoice PDF" style="background:#FFFFFF;color:#1E293B;border:1px solid #CBD5E1;border-radius:4px;padding:4px 9px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+                                    <span>⬇</span> PDF
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           `).join('')}
@@ -8813,6 +11712,10 @@ else if (tabName === 'returns') {
                     const oObj = list.find(o => String(o.id) === String(oid));
                     if (oObj) openInvoiceModal(oObj);
                   };
+                });
+
+                $$('.btn-ledger-download-pdf').forEach(btn => {
+                  btn.onclick = () => downloadOrderInvoicePdf(btn.dataset.oid, btn);
                 });
               }
 
@@ -8888,8 +11791,8 @@ else if (tabName === 'returns') {
                   ${list.length ? `
                     <div class="admin-activity-stream">
                       ${list.map(act => {
-                        const meta = getActivityMeta(act.activity_type);
-                        return `
+                const meta = getActivityMeta(act.activity_type);
+                return `
                           <div class="admin-activity-item">
                             <div class="admin-activity-icon">${meta.icon}</div>
                             <div class="admin-activity-body">
@@ -8904,7 +11807,7 @@ else if (tabName === 'returns') {
                             </div>
                           </div>
                         `;
-                      }).join('')}
+              }).join('')}
                     </div>
                   ` : '<p class="muted" style="padding:2rem 0;text-align:center">No events found matching this filter.</p>'}
                 </div>
@@ -9185,8 +12088,8 @@ else if (tabName === 'returns') {
                           </thead>
                           <tbody>
                             ${filtered.map(q => {
-                              const pillCls = q.status === 'resolved' ? 'pill-status-resolved' : (q.status === 'in_progress' ? 'pill-status-progress' : 'pill-status-new');
-                              return `
+                  const pillCls = q.status === 'resolved' ? 'pill-status-resolved' : (q.status === 'in_progress' ? 'pill-status-progress' : 'pill-status-new');
+                  return `
                                 <tr>
                                   <td><strong>#${q.id}</strong></td>
                                   <td>
@@ -9209,7 +12112,7 @@ else if (tabName === 'returns') {
                                   </td>
                                 </tr>
                               `;
-                            }).join('')}
+                }).join('')}
                           </tbody>
                         </table>
                       </div>
@@ -9272,12 +12175,13 @@ else if (tabName === 'returns') {
                 secondaryBtnLink: 'collections.html'
               };
 
-              const store = settings.store_info || {
-                phone: '+91 98765 43210',
-                email: 'concierge@satinostitch.com',
-                address: 'SATINOSTITCH Haute Couture, Ring Road Textile Market, Surat, Gujarat 395002',
-                hours: 'Monday – Saturday: 10:00 AM – 8:00 PM IST',
-                tagline: 'Wear Elegance'
+              const rawStore = settings.store_info || {};
+              const store = {
+                phone: rawStore.support_phone || rawStore.phone || SUPPORT_CONFIG.phone,
+                email: rawStore.support_email || rawStore.email || SUPPORT_CONFIG.email,
+                address: rawStore.address || 'Atelier SatinoStitch, 14 Kala Ghoda Arts Precinct, Mumbai 400001',
+                hours: rawStore.support_hours || rawStore.hours || SUPPORT_CONFIG.hours,
+                tagline: rawStore.tagline || 'HAUTE COUTURE & SARTORIAL PRET'
               };
 
               container.innerHTML = `
@@ -9418,11 +12322,19 @@ else if (tabName === 'returns') {
                       secondaryBtnLink: 'collections.html'
                     };
                   } else if (section === 'store_info') {
+                    const phoneVal = $('#cms-store-phone').value.trim();
+                    const emailVal = $('#cms-store-email').value.trim();
+                    const hoursVal = $('#cms-store-hours').value.trim() || '10:00 AM to 5:00 PM';
                     payload = {
-                      phone: $('#cms-store-phone').value.trim(),
-                      email: $('#cms-store-email').value.trim(),
+                      phone: phoneVal,
+                      support_phone: phoneVal,
+                      email: emailVal,
+                      support_email: emailVal,
                       address: $('#cms-store-addr').value.trim(),
-                      hours: $('#cms-store-hours').value.trim(),
+                      hours: hoursVal,
+                      support_hours: hoursVal,
+                      phone_support_hours: hoursVal,
+                      email_support_hours: hoursVal,
                       tagline: $('#cms-store-tagline').value.trim()
                     };
                   }
@@ -9434,6 +12346,9 @@ else if (tabName === 'returns') {
                     });
                     const d = await r.json();
                     if (!r.ok) throw new Error(d.error);
+                    if (section === 'store_info') {
+                      applySupportConfigFromSettings({ store_info: payload });
+                    }
                     toast(`Website ${section.replace('_', ' ')} updated in PostgreSQL.`);
                   } catch (e) {
                     toast(e.message || 'Error updating setting.');
@@ -9452,68 +12367,101 @@ else if (tabName === 'returns') {
           else if (tabName === 'profile') {
             container.innerHTML = '<p class="muted" style="padding:1.5rem 0">Loading atelier system controls &amp; PostgreSQL diagnostics...</p>';
             try {
-              const [settingsRes, healthRes, secStatsRes, auditLogsRes] = await Promise.all([
+              const [settingsRes, healthRes, secStatsRes, auditLogsRes, gstRes] = await Promise.all([
                 fetchAuth('/api/admin/settings').catch(() => ({ json: () => ({}) })),
                 fetchAuth('/api/admin/health').catch(() => ({ json: () => ({}) })),
                 fetchAuth('/api/admin/security/stats').catch(() => ({ json: () => ({}) })),
-                fetchAuth('/api/admin/security/audit-logs?limit=8').catch(() => ({ json: () => ({}) }))
+                fetchAuth('/api/admin/security/audit-logs?limit=8').catch(() => ({ json: () => ({}) })),
+                fetchAuth('/api/admin/gst-config').catch(() => ({ json: () => null }))
               ]);
               const settings = (await settingsRes.json()) || {};
               const health = (await healthRes.json()) || {};
               const secStats = (await secStatsRes.json()) || {};
               const auditData = (await auditLogsRes.json()) || {};
               const auditLogs = auditData.logs || [];
+              const liveGstRaw = await gstRes.json();
+              const gstCfg = (liveGstRaw && window.SatinoGST)
+                ? window.SatinoGST.normalizeConfig(liveGstRaw)
+                : { ...ACTIVE_GST_CONFIG };
+              ACTIVE_GST_CONFIG = { ...gstCfg };
+              const statesList = (window.SatinoGST && window.SatinoGST.INDIAN_STATES) || [{ name: 'Gujarat', code: '24' }, { name: 'Maharashtra', code: '27' }];
 
               container.innerHTML = `
                 <div class="card-head-between" style="margin-bottom:1.5rem">
                   <div>
                     <h2 style="font-size:20px;font-weight:700;color:#0F172A;margin:0 0 4px">Admin Settings &amp; System Configuration</h2>
-                    <p style="font-size:13px;color:#64748B;margin:0">Manage store identity, financial tax configurations, security credentials, and database diagnostics.</p>
+                    <p style="font-size:13px;color:#64748B;margin:0">Manage store identity, GST &amp; tax configurations, security credentials, and database diagnostics.</p>
                   </div>
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-                  <!-- Card 1: Store & Financial Settings -->
+                  <!-- Card 1: Store & GST Tax Management Configuration -->
                   <div class="admin-cms-card" style="margin-bottom:0">
-                    <h3 class="admin-cms-section-title"><span>🏛️</span> Store &amp; Financial Settings</h3>
-                    <p class="admin-cms-section-sub">Taxes, currencies and logistics thresholds</p>
+                    <h3 class="admin-cms-section-title"><span>🏛️</span> GST &amp; Tax Management Configuration</h3>
+                    <p class="admin-cms-section-sub">Configure CGST (2.5%), SGST (2.5%), IGST (5%), pricing mode &amp; place of supply</p>
 
-                    <div class="admin-form-group">
-                      <label>Store Name</label>
-                      <input type="text" class="admin-form-control" value="SATINOSTITCH Haute Couture &amp; Pret" disabled>
-                    </div>
+                    <form id="admin-gst-config-form">
+                      <div style="display:flex;align-items:center;justify-content:space-between;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;padding:8px 12px;margin-bottom:12px">
+                        <label style="display:flex;align-items:center;gap:8px;margin:0;font-size:12.5px;font-weight:600;color:#0F172A;cursor:pointer">
+                          <input type="checkbox" id="gst-cfg-enabled" name="enabled" ${gstCfg.enabled ? 'checked' : ''}>
+                          <span>Enable Automated GST Calculations</span>
+                        </label>
+                        <span class="admin-pill ${gstCfg.enabled ? 'published' : 'archived'}" style="font-size:10.5px">${gstCfg.enabled ? 'Active' : 'Disabled'}</span>
+                      </div>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                      <div class="admin-form-group">
-                        <label>Default Currency</label>
-                        <select class="admin-form-control">
-                          <option value="INR" selected>INR - Indian Rupee (₹)</option>
-                          <option value="USD">USD - US Dollar ($)</option>
-                          <option value="EUR">EUR - Euro (€)</option>
-                          <option value="GBP">GBP - British Pound (£)</option>
-                        </select>
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="admin-form-group">
+                          <label>Default GST Rate</label>
+                          <select id="gst-cfg-default-rate" name="defaultGstRate" class="admin-form-control">
+                            <option value="5" ${Number(gstCfg.defaultGstRate) === 5 ? 'selected' : ''}>5% (2.5% CGST + 2.5% SGST / 5% IGST)</option>
+                            <option value="2.5" ${Number(gstCfg.defaultGstRate) === 2.5 ? 'selected' : ''}>2.5% (1.25% CGST + 1.25% SGST / 2.5% IGST)</option>
+                            <option value="0" ${Number(gstCfg.defaultGstRate) === 0 ? 'selected' : ''}>0% (GST Exempt)</option>
+                          </select>
+                        </div>
+                        <div class="admin-form-group">
+                          <label>Tax Application Mode</label>
+                          <select id="gst-cfg-tax-mode" name="taxMode" class="admin-form-control">
+                            <option value="auto" ${gstCfg.taxMode === 'auto' ? 'selected' : ''}>Auto (Intra-State CGST+SGST / Inter-State IGST)</option>
+                            <option value="cgst_sgst" ${gstCfg.taxMode === 'cgst_sgst' ? 'selected' : ''}>Always Intra-State (CGST + SGST)</option>
+                            <option value="igst" ${gstCfg.taxMode === 'igst' ? 'selected' : ''}>Always Inter-State (IGST)</option>
+                          </select>
+                        </div>
                       </div>
-                      <div class="admin-form-group">
-                        <label>Standard GST Tax Rate</label>
-                        <input type="text" class="admin-form-control" value="5% (2.5% CGST + 2.5% SGST)" disabled>
-                      </div>
-                    </div>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                      <div class="admin-form-group">
-                        <label>Free Shipping Net Threshold</label>
-                        <input type="text" class="admin-form-control" value="₹3,000" disabled>
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="admin-form-group">
+                          <label>Price Calculation Mode</label>
+                          <select id="gst-cfg-pricing-mode" name="pricingMode" class="admin-form-control">
+                            <option value="inclusive" ${gstCfg.pricingMode === 'inclusive' ? 'selected' : ''}>Tax-Inclusive (MRP includes GST)</option>
+                            <option value="exclusive" ${gstCfg.pricingMode === 'exclusive' ? 'selected' : ''}>Tax-Exclusive (Add GST at Checkout)</option>
+                          </select>
+                        </div>
+                        <div class="admin-form-group">
+                          <label>Seller Home State (Origin)</label>
+                          <select id="gst-cfg-seller-state" name="sellerState" class="admin-form-control">
+                            ${statesList.map(st => `<option value="${esc(st.name)}" data-code="${esc(st.code)}" ${st.name.toLowerCase() === String(gstCfg.sellerState || 'Gujarat').toLowerCase() ? 'selected' : ''}>${esc(st.name)} (${esc(st.code)})</option>`).join('')}
+                          </select>
+                        </div>
                       </div>
-                      <div class="admin-form-group">
-                        <label>Order ID Prefix</label>
-                        <input type="text" class="admin-form-control" value="SS" disabled>
-                      </div>
-                    </div>
 
-                    <div class="admin-form-group">
-                      <label>GSTIN Registration</label>
-                      <input type="text" class="admin-form-control" value="24AAECS1234P1Z8 (State Code: 24)" disabled>
-                    </div>
+                      <div style="display:grid;grid-template-columns:1.4fr 0.6fr;gap:12px">
+                        <div class="admin-form-group">
+                          <label>GSTIN Registration</label>
+                          <input type="text" id="gst-cfg-gstin" name="gstin" class="admin-form-control" value="${esc(gstCfg.gstin)}" placeholder="24AAECS1234P1Z8" required>
+                        </div>
+                        <div class="admin-form-group">
+                          <label>Default HSN</label>
+                          <input type="text" id="gst-cfg-hsn" name="defaultHsnCode" class="admin-form-control" value="${esc(gstCfg.defaultHsnCode || '6204')}" placeholder="6204">
+                        </div>
+                      </div>
+
+                      <!-- Live Centralized Tax Preview -->
+                      <div id="admin-gst-live-preview" style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:#334155"></div>
+
+                      <button type="submit" id="btn-save-gst-config" class="btn sm" style="background:#1E293B;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">
+                        Save GST Configuration
+                      </button>
+                    </form>
                   </div>
 
                   <!-- Card 2: Administrator Profile -->
@@ -9710,9 +12658,9 @@ else if (tabName === 'returns') {
                           ${auditLogs.length === 0 ? `
                             <tr><td colspan="5" style="padding:16px;text-align:center;color:#94A3B8">No security incidents logged. Atelier infrastructure is running cleanly.</td></tr>
                           ` : auditLogs.slice(0, 8).map(lg => {
-                            const sevColor = lg.severity === 'CRITICAL' ? '#DC2626' : lg.severity === 'WARNING' ? '#D97706' : '#2563EB';
-                            const sevBg = lg.severity === 'CRITICAL' ? '#FEE2E2' : lg.severity === 'WARNING' ? '#FEF3C7' : '#EFF6FF';
-                            return `
+                const sevColor = lg.severity === 'CRITICAL' ? '#DC2626' : lg.severity === 'WARNING' ? '#D97706' : '#2563EB';
+                const sevBg = lg.severity === 'CRITICAL' ? '#FEE2E2' : lg.severity === 'WARNING' ? '#FEF3C7' : '#EFF6FF';
+                return `
                               <tr style="border-bottom:1px solid #F1F5F9">
                                 <td style="padding:8px 12px;color:#64748B;white-space:nowrap">${new Date(lg.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                                 <td style="padding:8px 12px;font-weight:600;color:#0F172A">${esc(lg.event_type)}</td>
@@ -9723,13 +12671,83 @@ else if (tabName === 'returns') {
                                 <td style="padding:8px 12px;color:#64748B">${esc(lg.path || '—')}</td>
                               </tr>
                             `;
-                          }).join('')}
+              }).join('')}
                         </tbody>
                       </table>
                     </div>
                   </div>
                 </div>
               `;
+
+              // Live GST Preview & Save Handler
+              const readGstFormConfig = () => {
+                const stateSel = $('#gst-cfg-seller-state');
+                const opt = stateSel ? stateSel.options[stateSel.selectedIndex] : null;
+                const defRate = Number($('#gst-cfg-default-rate')?.value ?? 5);
+                return {
+                  enabled: Boolean($('#gst-cfg-enabled')?.checked),
+                  defaultGstRate: defRate,
+                  cgstRate: Math.round((defRate / 2) * 100) / 100,
+                  sgstRate: Math.round((defRate / 2) * 100) / 100,
+                  igstRate: defRate,
+                  taxMode: $('#gst-cfg-tax-mode')?.value || 'auto',
+                  pricingMode: $('#gst-cfg-pricing-mode')?.value || 'inclusive',
+                  sellerState: stateSel?.value || 'Gujarat',
+                  sellerStateCode: opt?.dataset?.code || '24',
+                  gstin: $('#gst-cfg-gstin')?.value?.trim() || '24AAECS1234P1Z8',
+                  defaultHsnCode: $('#gst-cfg-hsn')?.value?.trim() || '6204'
+                };
+              };
+
+              const updateGstPreviewBox = () => {
+                const box = $('#admin-gst-live-preview');
+                if (!box || !window.SatinoGST) return;
+                const draftCfg = readGstFormConfig();
+                const intra = window.SatinoGST.calculateOrderGst({
+                  items: [{ price: 1000, qty: 1, gstRate: draftCfg.defaultGstRate, gstType: 'auto' }],
+                  shippingFee: 0,
+                  customerState: draftCfg.sellerState,
+                  config: draftCfg
+                });
+                const otherState = draftCfg.sellerState.toLowerCase() === 'maharashtra' ? 'Gujarat' : 'Maharashtra';
+                const inter = window.SatinoGST.calculateOrderGst({
+                  items: [{ price: 1000, qty: 1, gstRate: draftCfg.defaultGstRate, gstType: 'auto' }],
+                  shippingFee: 0,
+                  customerState: otherState,
+                  config: draftCfg
+                });
+                box.innerHTML = `
+                  <div style="font-weight:700;color:#0F172A;margin-bottom:4px">Live Calculation Preview (₹1,000 Product · ${draftCfg.pricingMode === 'inclusive' ? 'Tax-Inclusive' : 'Tax-Exclusive'})</div>
+                  <div><strong>Intra-State (${esc(draftCfg.sellerState)}):</strong> Taxable ${moneyExact(intra.taxableAmount)} + CGST ${moneyExact(intra.cgstAmount)} + SGST ${moneyExact(intra.sgstAmount)} = <strong>${moneyExact(intra.grandTotal)}</strong></div>
+                  <div><strong>Inter-State (${esc(otherState)}):</strong> Taxable ${moneyExact(inter.taxableAmount)} + IGST ${moneyExact(inter.igstAmount)} = <strong>${moneyExact(inter.grandTotal)}</strong></div>
+                `;
+              };
+
+              updateGstPreviewBox();
+              ['#gst-cfg-enabled', '#gst-cfg-default-rate', '#gst-cfg-tax-mode', '#gst-cfg-pricing-mode', '#gst-cfg-seller-state'].forEach(sel => {
+                $(sel)?.addEventListener('change', updateGstPreviewBox);
+              });
+
+              $('#admin-gst-config-form').onsubmit = async (e) => {
+                e.preventDefault();
+                const btn = $('#btn-save-gst-config');
+                const payload = readGstFormConfig();
+                try {
+                  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+                  const res = await fetchAuth('/api/admin/gst-config', {
+                    method: 'PUT',
+                    body: payload
+                  });
+                  const d = await res.json();
+                  if (!res.ok) throw new Error(d.error || 'Could not save GST configuration.');
+                  ACTIVE_GST_CONFIG = window.SatinoGST ? window.SatinoGST.normalizeConfig(d.config) : d.config;
+                  toast('GST & Tax configuration saved and synchronized across storefront & invoices!');
+                  renderTab('profile');
+                } catch (err) {
+                  toast(err.message || 'Failed to update GST settings.');
+                  if (btn) { btn.disabled = false; btn.textContent = 'Save GST Configuration'; }
+                }
+              };
 
               $('#admin-profile-form').onsubmit = async (e) => {
                 e.preventDefault();
@@ -9783,13 +12801,30 @@ else if (tabName === 'returns') {
           };
         });
 
-        // Default tab is 'admin-orders' matching the reference image!
-        renderTab('overview');
+        // Sync pending returns badge on sidebar load
+        const syncSidebarReturnsBadge = async () => {
+          try {
+            const r = await fetchAuth('/api/admin/returns');
+            if (!r.ok) return;
+            const d = await r.json();
+            const pending = Number(d?.stats?.pending || 0);
+            const badge = $('#sidebar-returns-badge');
+            if (badge) {
+              badge.textContent = pending;
+              badge.style.display = pending > 0 ? 'inline-block' : 'none';
+            }
+          } catch { }
+        };
+        syncSidebarReturnsBadge();
+
+        // Deep-link support (e.g., admin.html?tab=returns)
+        const initialAdminTab = new URLSearchParams(location.search).get('tab');
+        renderTab(initialAdminTab || 'overview');
       }
     },
 
     /* ---------- Module 4b: Heritage Story ---------- */
-    about() {},
+    about() { },
 
     /* ---------- Module 4c: The SatinoStitch Journal ---------- */
     journal() {
@@ -9871,6 +12906,11 @@ else if (tabName === 'returns') {
 
     /* ---------- Module 5: Concierge Inquiries & Bespoke ---------- */
     contact() {
+      const supportHost = $('#contact-support-channels');
+      if (supportHost) {
+        supportHost.innerHTML = renderCustomerSupportCardsHTML({ compact: true, showHeading: false });
+        hydrateSupportContactUI();
+      }
       const f = $('#contact-form');
       const params = new URLSearchParams(location.search);
       if (params.get('type') === 'bespoke') {
@@ -9913,7 +12953,7 @@ else if (tabName === 'returns') {
       const data = await res.json();
       if (res.ok && data.status === 'ok') {
         if (badge) {
-          badge.innerHTML = `<span class="health-dot health-ok"></span> Server &amp; DB: Online`;
+          badge.innerHTML = ``;
           badge.title = `Database: ${data.database?.name || 'satinostitch'} (${data.database?.productsCount || 12} products, ${data.database?.categoriesCount || 2} categories)`;
         }
       } else {
@@ -9948,7 +12988,7 @@ else if (tabName === 'returns') {
       localStorage.removeItem('ss_token');
       localStorage.removeItem('ss_user');
     }
-  } catch {}
+  } catch { }
   mountChrome();
   checkSystemHealth();
   const page = document.body.dataset.page;
@@ -9962,10 +13002,21 @@ else if (tabName === 'returns') {
     ? syncUserWishlist()
     : Promise.resolve().then(() => db.clearGuestWishlist());
 
+  // Load live GST configuration from PostgreSQL alongside catalog products
+  const initGstPromise = fetch('/api/gst/config')
+    .then(r => r.ok ? r.json() : null)
+    .then(cfg => {
+      if (cfg && window.SatinoGST) {
+        ACTIVE_GST_CONFIG = window.SatinoGST.normalizeConfig(cfg);
+      }
+    })
+    .catch(() => { });
+
   (needsData
     ? fetch('/api/products').then(r => r.json()).then(d => { PRODUCTS = d; })
     : Promise.resolve()
   )
+    .then(() => initGstPromise)
     .then(() => initWishlistPromise)
     .then(() => pages[page]?.())
     .catch((err) => {

@@ -16,7 +16,7 @@ async function createNotification({
   message,
   badge = 'Atelier Update',
   icon = 'bell',
-  image = 'images/emblem.png',
+  image = 'images/emblem-white.png',
   link = '#',
   metadata = {}
 }) {
@@ -222,7 +222,7 @@ async function seedDefaultSmartNotifications(userId = null) {
       message: 'Curating your celebration wardrobe? Apply code HERITAGE10 at checkout for 10% bespoke discount & white-glove worldwide delivery.',
       badge: '👑 VIP Privilege',
       icon: 'tag',
-      image: 'images/emblem.png',
+      image: 'images/emblem-white.png',
       link: 'shop.html',
       metadata: { promoCode: 'HERITAGE10', discount: '10%' }
     }

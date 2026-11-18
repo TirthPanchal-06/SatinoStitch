@@ -24,6 +24,8 @@ const couponRoutes = require('./routes/couponRoutes');
 const userRoutes = require('./routes/userRoutes');
 const recommendationRoutes = require('./routes/recommendationRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const returnRoutes = require('./routes/returnRoutes');
+const gstRoutes = require('./routes/gstRoutes');
 const miscRoutes = require('./routes/miscRoutes');
 
 const app = express();
@@ -64,6 +66,8 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/returns', returnRoutes);
+app.use('/api/gst', gstRoutes);
 app.use('/api', miscRoutes);
 
 /* ---------- Error Handling ---------- */

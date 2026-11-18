@@ -1,4 +1,6 @@
 const cartModel = require('../models/cartModel');
+const productModel = require('../models/productModel');
+const variantModel = require('../models/variantModel');
 const activityModel = require('../models/activityModel');
 
 async function getCart(req, res) {
@@ -14,20 +16,50 @@ async function addToCart(req, res) {
   const { productId, size, color, quantity } = req.body || {};
   if (!productId) return res.status(400).json({ error: 'Product ID is required.' });
 
+  const resolvedSize = size || 'M';
+  const resolvedColor = color || null;
+  const qtyToAdd = Math.max(1, parseInt(quantity || 1, 10));
+
   try {
+    const product = await productModel.getProductById(Number(productId));
+    if (!product || (product.publishStatus || 'published') !== 'published') {
+      return res.status(404).json({ error: 'This garment is currently unavailable.' });
+    }
+
+    // Account for quantity already in user's cart for the same variant
+    const currentCart = await cartModel.getUserCart(req.user.id);
+    const existingItem = currentCart.find(ci =>
+      Number(ci.productId) === Number(productId) &&
+      String(ci.size || '').toUpperCase() === String(resolvedSize).toUpperCase() &&
+      String(ci.color || '').toLowerCase() === String(resolvedColor || '').toLowerCase()
+    );
+    const totalDesiredQty = (existingItem ? Number(existingItem.quantity) : 0) + qtyToAdd;
+
+    const availability = await variantModel.validateVariantAvailability(
+      product.id,
+      resolvedSize,
+      resolvedColor,
+      totalDesiredQty,
+      product.stock
+    );
+
+    if (!availability.available) {
+      return res.status(400).json({ error: availability.error || 'Selected variant is unavailable.' });
+    }
+
     const item = await cartModel.addToUserCart(req.user.id, {
       productId,
-      size: size || 'M',
-      color: color || null,
-      quantity: quantity || 1
+      size: resolvedSize,
+      color: availability.variant ? availability.variant.colorName : resolvedColor,
+      quantity: qtyToAdd
     });
 
     activityModel.logCustomerActivity({
       userId: req.user.id,
       userName: req.user.name,
       activityType: 'cart_add',
-      description: `Added product #${productId} (${size || 'M'}) to bag`,
-      metadata: { productId, size, color, quantity }
+      description: `Added product #${productId} (${resolvedSize}${resolvedColor ? ` · ${resolvedColor}` : ''}) to bag`,
+      metadata: { productId, size: resolvedSize, color: resolvedColor, quantity: qtyToAdd }
     }).catch(() => {});
 
     res.status(201).json({ message: 'Garment added to your bespoke bag.', item });
@@ -43,6 +75,24 @@ async function updateCartItem(req, res) {
     return res.status(400).json({ error: 'Valid Item ID and quantity are required.' });
   }
   try {
+    const qty = parseInt(quantity, 10);
+    if (qty > 0) {
+      const currentCart = await cartModel.getUserCart(req.user.id);
+      const target = currentCart.find(ci => Number(ci.id) === id);
+      if (target) {
+        const availability = await variantModel.validateVariantAvailability(
+          target.productId,
+          target.size,
+          target.color,
+          qty,
+          target.stock
+        );
+        if (!availability.available) {
+          return res.status(400).json({ error: availability.error || 'Requested quantity exceeds available variant stock.' });
+        }
+      }
+    }
+
     const item = await cartModel.updateCartItemQuantity(req.user.id, id, quantity);
     res.json({ message: 'Bag item updated.', item });
   } catch (err) {

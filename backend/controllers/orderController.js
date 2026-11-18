@@ -1,5 +1,6 @@
 const orderModel = require('../models/orderModel');
 const productModel = require('../models/productModel');
+const variantModel = require('../models/variantModel');
 const couponModel = require('../models/couponModel');
 const cartModel = require('../models/cartModel');
 const activityModel = require('../models/activityModel');
@@ -7,6 +8,7 @@ const adminUpgradeModel = require('../models/adminUpgradeModel');
 const customerNotificationModel = require('../models/customerNotificationModel');
 const { evaluateOrderFraud } = require('../services/fraudDetectionService');
 const { verifyRazorpaySignature } = require('../services/paymentVerificationService');
+const gstService = require('../services/gstService');
 const { getClientIp } = require('../middleware/rateLimiter');
 const env = require('../config/env');
 
@@ -16,6 +18,104 @@ async function getPaymentConfig(req, res) {
     upiVpa: env.UPI_VPA,
     merchantName: env.MERCHANT_NAME
   });
+}
+
+async function createRazorpayOrder(req, res) {
+  try {
+    const keyId = env.RAZORPAY_KEY_ID;
+    const keySecret = env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+      return res.status(500).json({ error: 'Razorpay credentials are not configured on the server.' });
+    }
+
+    const { items, couponCode, promo, state, amount } = req.body || {};
+    let totalInr = Number(amount || 0);
+
+    // Prefer authoritative server-side total calculation when cart items are provided
+    if (Array.isArray(items) && items.length > 0) {
+      let subtotal = 0;
+      const gstLineItems = [];
+      for (const item of items) {
+        const pid = Number(item.productId || item.id);
+        const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
+        const product = await productModel.getProductById(pid);
+        if (!product) {
+          return res.status(400).json({ error: `Product #${pid} is unavailable.` });
+        }
+        const effectiveUnitPrice = product.activeDiscount && Number.isFinite(Number(product.activeDiscount.discountedPrice))
+          ? Number(product.activeDiscount.discountedPrice)
+          : Number(product.price);
+        subtotal += effectiveUnitPrice * qty;
+        gstLineItems.push({
+          id: product.id,
+          name: product.name,
+          price: effectiveUnitPrice,
+          qty,
+          gstRate: product.gstRate,
+          gstType: product.gstType,
+          hsnCode: product.hsnCode
+        });
+      }
+
+      let discount = 0;
+      const resolvedPromo = (couponCode || promo || '').trim();
+      if (resolvedPromo) {
+        const c = await couponModel.getCouponByCode(String(resolvedPromo).toUpperCase());
+        if (c && c.is_active && subtotal >= Number(c.min_order_amount || 0)) {
+          discount = Math.round((subtotal * Number(c.discount_percent || 0)) / 100);
+        }
+      }
+
+      const gstSummary = await gstService.calculateOrderTax({
+        items: gstLineItems,
+        discount,
+        customerState: state || 'Gujarat'
+      });
+      totalInr = Number(gstSummary.grandTotal || 0);
+    }
+
+    if (!Number.isFinite(totalInr) || totalInr <= 0) {
+      return res.status(400).json({ error: 'Valid payable amount is required to initialize Razorpay order.' });
+    }
+
+    const amountPaise = Math.round(totalInr * 100);
+    const receipt = `ss_${Date.now()}`;
+    const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+
+    const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        amount: amountPaise,
+        currency: 'INR',
+        receipt,
+        notes: {
+          merchant: env.MERCHANT_NAME || 'SATINOSTITCH'
+        }
+      })
+    });
+
+    const rzpData = await rzpRes.json().catch(() => ({}));
+    if (!rzpRes.ok || !rzpData.id) {
+      const msg = (rzpData.error && (rzpData.error.description || rzpData.error.code)) || 'Failed to create Razorpay order.';
+      return res.status(502).json({ error: `Razorpay Gateway Error: ${msg}` });
+    }
+
+    return res.json({
+      id: rzpData.id,
+      amount: rzpData.amount,
+      amountInr: totalInr,
+      currency: rzpData.currency || 'INR',
+      receipt: rzpData.receipt,
+      status: rzpData.status,
+      keyId
+    });
+  } catch (err) {
+    return res.status(500).json({ error: `Unable to initiate Razorpay checkout: ${err.message}` });
+  }
 }
 
 async function createOrder(req, res) {
@@ -50,27 +150,39 @@ async function createOrder(req, res) {
 
     for (const item of items) {
       const p = await productModel.getProductById(Number(item.id || item.productId));
-      if (!p) {
-        return res.status(400).json({ error: `Creation with ID "${item.id || item.productId}" is no longer in catalog.` });
+      if (!p || (p.publishStatus || 'published') !== 'published') {
+        return res.status(400).json({ error: `Creation with ID "${item.id || item.productId}" is no longer available in catalog.` });
       }
       const qty = Math.max(1, parseInt(item.qty || item.quantity || 1, 10));
-      if (p.stock < qty) {
+      const itemSize = item.size || 'M';
+      const itemColor = item.color || (p.colors && p.colors[0]?.name) || null;
+
+      // Validate size-wise & color-wise variant stock (falls back to product.stock if no variants exist)
+      const availability = await variantModel.validateVariantAvailability(p.id, itemSize, itemColor, qty, p.stock);
+      if (!availability.available) {
         return res.status(400).json({
-          error: `Insufficient stock for "${p.name}". Only ${p.stock} piece(s) available in atelier.`
+          error: availability.error || `Insufficient stock for "${p.name}" (${itemSize}${itemColor ? ` · ${itemColor}` : ''}).`
         });
       }
 
-      const itemTotal = p.price * qty;
-      subtotal += itemTotal;
+      // Apply active selected-product discount ONLY if product is currently eligible
+      const effectiveUnitPrice = p.activeDiscount ? Number(p.activeDiscount.discountedPrice) : Number(p.price);
+      const itemTotal = Math.round((effectiveUnitPrice * qty + Number.EPSILON) * 100) / 100;
+      subtotal = Math.round((subtotal + itemTotal + Number.EPSILON) * 100) / 100;
       validatedItems.push({
         id: p.id,
         name: p.name,
-        price: p.price,
+        price: effectiveUnitPrice,
+        originalPrice: Number(p.price),
+        productDiscountSavings: p.activeDiscount ? Math.round((p.activeDiscount.savings * qty + Number.EPSILON) * 100) / 100 : 0,
         qty,
-        size: item.size || 'M',
-        color: item.color || null,
+        size: availability.variant ? availability.variant.size : itemSize,
+        color: availability.variant ? availability.variant.colorName : itemColor,
         image: p.image,
-        total: itemTotal
+        total: itemTotal,
+        gstRate: p.gstRate,
+        gstType: p.gstType,
+        hsnCode: p.hsnCode
       });
     }
 
@@ -84,10 +196,31 @@ async function createOrder(req, res) {
       }
     }
 
-    // 3. Shipping logic: Complimentary over ₹3,000 net, otherwise ₹150
-    const netForShipping = subtotal - discount;
-    const shippingFee = (!subtotal || netForShipping >= 3000) ? 0 : 150;
-    const grandTotal = Math.max(0, netForShipping + shippingFee);
+    // 3. Centralized GST, Shipping & Final Payable Calculation (prevents duplicate tax & rounding drift)
+    const gstBreakdown = await gstService.calculateOrderTax({
+      items: validatedItems,
+      discount,
+      customerState: state
+    });
+    const shippingFee = gstBreakdown.shippingFee;
+    const grandTotal = gstBreakdown.grandTotal;
+
+    // Attach exact per-line GST snapshot to validatedItems
+    const taxedItems = validatedItems.map((it, idx) => {
+      const tx = gstBreakdown.items[idx] || {};
+      return {
+        ...it,
+        gstRate: tx.gstRate ?? it.gstRate ?? 5,
+        gstType: tx.gstType ?? it.gstType ?? 'auto',
+        hsnCode: tx.hsnCode ?? it.hsnCode ?? '6204',
+        taxableAmount: tx.taxableAmount ?? it.total,
+        cgstAmount: tx.cgstAmount ?? 0,
+        sgstAmount: tx.sgstAmount ?? 0,
+        igstAmount: tx.igstAmount ?? 0,
+        gstAmount: tx.gstAmount ?? 0,
+        total: tx.linePayable ?? it.total
+      };
+    });
 
     // 4. Generate Unique Order ID & Courier Tracking Number
     const orderNumber = 'SS' + Math.floor(1000000 + Math.random() * 9000000);
@@ -164,7 +297,28 @@ async function createOrder(req, res) {
       fraudFlags: fraudResult.flags,
       clientIp,
       riskLevel: fraudResult.riskLevel,
-      items: validatedItems
+      taxableAmount: gstBreakdown.taxableAmount,
+      cgstAmount: gstBreakdown.cgstAmount,
+      sgstAmount: gstBreakdown.sgstAmount,
+      igstAmount: gstBreakdown.igstAmount,
+      totalGst: gstBreakdown.totalGst,
+      gstType: gstBreakdown.supplyType,
+      gstPricingMode: gstBreakdown.pricingMode,
+      gstBreakdown: {
+        gstin: gstBreakdown.gstin,
+        sellerState: gstBreakdown.sellerState,
+        sellerStateCode: gstBreakdown.sellerStateCode,
+        placeOfSupply: gstBreakdown.placeOfSupply,
+        pricingMode: gstBreakdown.pricingMode,
+        supplyType: gstBreakdown.supplyType,
+        taxableAmount: gstBreakdown.taxableAmount,
+        cgstAmount: gstBreakdown.cgstAmount,
+        sgstAmount: gstBreakdown.sgstAmount,
+        igstAmount: gstBreakdown.igstAmount,
+        totalGst: gstBreakdown.totalGst,
+        slabs: gstBreakdown.slabs
+      },
+      items: taxedItems
     });
 
     // 7. Clear user's server cart if authenticated
@@ -199,7 +353,7 @@ async function createOrder(req, res) {
       message: `Commission for ${customer.name} reserved for ₹${grandTotal.toLocaleString('en-IN')}. Master atelier artisan assigned for precision stitching & packaging.`,
       badge: '📦 Order Confirmed',
       icon: 'package',
-      image: validatedItems[0]?.image || 'images/emblem.png',
+      image: validatedItems[0]?.image || 'images/emblem-white.png',
       link: `account.html?tab=orders&id=${order.id}`,
       metadata: { orderId: order.id, total: grandTotal, status: 'Confirmed' }
     }).catch(() => { });
@@ -242,6 +396,17 @@ async function createOrder(req, res) {
       total: order.total,
       paymentMethod: order.payment_method,
       paymentStatus: order.payment_status,
+      gstBreakdown: {
+        taxableAmount: gstBreakdown.taxableAmount,
+        cgstAmount: gstBreakdown.cgstAmount,
+        sgstAmount: gstBreakdown.sgstAmount,
+        igstAmount: gstBreakdown.igstAmount,
+        totalGst: gstBreakdown.totalGst,
+        supplyType: gstBreakdown.supplyType,
+        pricingMode: gstBreakdown.pricingMode,
+        placeOfSupply: gstBreakdown.placeOfSupply,
+        slabs: gstBreakdown.slabs
+      },
       order: {
         id: order.id,
         trackingNumber: order.tracking_number,
@@ -259,7 +424,7 @@ async function createOrder(req, res) {
     });
   } catch (err) {
     console.error('[Create Order Error]:', err);
-    res.status(500).json({ error: err.message || 'Could not process order.' });
+    res.status(err.statusCode || 500).json({ error: err.message || 'Could not process order.' });
   }
 }
 
@@ -306,11 +471,11 @@ async function cancelOrder(req, res) {
       null
     );
 
-    // Restock items
+    // Restock items (variant-aware with automatic product stock sync)
     if (Array.isArray(order.items)) {
       for (const item of order.items) {
         if (item.product_id) {
-          await productModel.updateProductStock(item.product_id, item.quantity).catch(() => { });
+          await variantModel.restockVariantStock(item.product_id, item.size, item.color, item.quantity).catch(() => { });
         }
       }
     }
@@ -398,6 +563,7 @@ async function verifyPayment(req, res) {
 
 module.exports = {
   getPaymentConfig,
+  createRazorpayOrder,
   createOrder,
   verifyPayment,
   getOrderById,

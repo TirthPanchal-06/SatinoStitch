@@ -12,7 +12,8 @@ async function getProducts(req, res) {
       sort: req.query.sort,
       search: req.query.search,
       limit: Math.min(100, parseInt(req.query.limit || '50', 10)),
-      offset: parseInt(req.query.offset || '0', 10)
+      offset: parseInt(req.query.offset || '0', 10),
+      publishStatus: 'published'   // public endpoint: only published products
     };
     const list = await productModel.getProducts(filters);
     res.json(list);
@@ -22,6 +23,8 @@ async function getProducts(req, res) {
   }
 }
 
+const VALID_PUBLISH_STATUSES = ['published', 'draft', 'archived'];
+
 async function getProductById(req, res) {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
@@ -30,10 +33,17 @@ async function getProductById(req, res) {
     const p = await productModel.getProductById(id);
     if (!p) return res.status(404).json({ error: 'Garment not found in atelier.' });
 
-    // Track view in background
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const userId = req.user ? req.user.id : null;
-    productModel.recordProductView(id, userId, ip).catch(() => {});
+    const isAdmin = req.user && req.user.role === 'admin';
+    if ((p.publishStatus || 'published') !== 'published' && !isAdmin) {
+      return res.status(404).json({ error: 'Garment not found in atelier.' });
+    }
+
+    // Track view in background (only for public published views)
+    if (!isAdmin) {
+      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      const userId = req.user ? req.user.id : null;
+      productModel.recordProductView(id, userId, ip).catch(() => {});
+    }
 
     res.json(p);
   } catch (err) {
@@ -42,19 +52,30 @@ async function getProductById(req, res) {
 }
 
 async function createProduct(req, res) {
-  const { name, price, cat } = req.body || {};
-  if (!name || price === undefined || !cat) {
-    return res.status(400).json({ error: 'Garment name, price, and category are required.' });
+  const body = req.body || {};
+  const publishStatus = String(body.publishStatus || body.publish_status || 'published').toLowerCase();
+
+  if (!VALID_PUBLISH_STATUSES.includes(publishStatus)) {
+    return res.status(400).json({ error: `Invalid product status. Allowed: ${VALID_PUBLISH_STATUSES.join(', ')}` });
+  }
+
+  // Published products require essential catalog details; drafts allow incomplete data
+  if (publishStatus === 'published') {
+    const { name, price, cat } = body;
+    if (!name || !String(name).trim() || price === undefined || price === '' || Number(price) <= 0 || !cat) {
+      return res.status(400).json({ error: 'Garment name, a valid price greater than 0, and category are required to publish.' });
+    }
   }
 
   try {
-    const p = await productModel.createProduct(req.body);
+    const p = await productModel.createProduct({ ...body, publishStatus });
+    const statusLabel = publishStatus === 'draft' ? 'saved as draft' : (publishStatus === 'archived' ? 'archived' : 'added to catalog');
     activityModel.logCustomerActivity({
       userId: req.user.id,
       userName: req.user.name,
-      activityType: 'product_created',
-      description: `New creation added to catalog: "${p.name}" (₹${p.price}) by ${req.user.name}`,
-      metadata: { productId: p.id, name: p.name, price: p.price }
+      activityType: publishStatus === 'draft' ? 'product_draft_created' : 'product_created',
+      description: `Creation ${statusLabel}: "${p.name}" (₹${p.price}) by ${req.user.name}`,
+      metadata: { productId: p.id, name: p.name, price: p.price, publishStatus }
     }).catch(() => {});
 
     res.status(201).json(p);
@@ -67,16 +88,39 @@ async function updateProduct(req, res) {
   const id = Number(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
 
+  const body = req.body || {};
+  const requestedStatus = body.publishStatus || body.publish_status;
+  if (requestedStatus && !VALID_PUBLISH_STATUSES.includes(String(requestedStatus).toLowerCase())) {
+    return res.status(400).json({ error: `Invalid product status. Allowed: ${VALID_PUBLISH_STATUSES.join(', ')}` });
+  }
+
   try {
-    const p = await productModel.updateProduct(id, req.body);
-    if (!p) return res.status(404).json({ error: 'Garment not found.' });
+    const existing = await productModel.getProductById(id);
+    if (!existing) return res.status(404).json({ error: 'Garment not found.' });
+
+    const finalStatus = requestedStatus ? String(requestedStatus).toLowerCase() : (existing.publishStatus || 'published');
+    if (finalStatus === 'published') {
+      const nextName = body.name !== undefined ? String(body.name).trim() : existing.name;
+      const nextPrice = (body.price !== undefined && body.price !== null && body.price !== '') ? Number(body.price) : Number(existing.price);
+      const nextCat = body.cat || existing.cat;
+      if (!nextName || nextName === 'Untitled Draft' || isNaN(nextPrice) || nextPrice <= 0 || !nextCat) {
+        return res.status(400).json({
+          error: 'To publish this product, please provide a garment name, category, and selling price greater than 0 (or save it as a Draft).'
+        });
+      }
+    }
+
+    const p = await productModel.updateProduct(id, {
+      ...body,
+      ...(requestedStatus ? { publishStatus: finalStatus } : {})
+    });
 
     activityModel.logCustomerActivity({
-      userId: req.user.id,
-      userName: req.user.name,
+      userId: req.user?.id || 1,
+      userName: req.user?.name || 'Administrator',
       activityType: 'product_updated',
-      description: `Creation updated: "${p.name}" by ${req.user.name}`,
-      metadata: { productId: p.id }
+      description: `Creation updated: "${p.name}" (${p.publishStatus}) by ${req.user?.name || 'Administrator'}`,
+      metadata: { productId: p.id, publishStatus: p.publishStatus }
     }).catch(() => {});
 
     res.json(p);
@@ -177,6 +221,44 @@ async function recordView(req, res) {
   }
 }
 
+async function setPublishStatus(req, res) {
+  const id = Number(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid product ID' });
+
+  const { status } = req.body || {};
+  const normalized = status ? String(status).toLowerCase() : '';
+  if (!normalized || !VALID_PUBLISH_STATUSES.includes(normalized)) {
+    return res.status(400).json({ error: `Valid status required: ${VALID_PUBLISH_STATUSES.join(', ')}` });
+  }
+
+  try {
+    const existing = await productModel.getProductById(id);
+    if (!existing) return res.status(404).json({ error: 'Garment not found.' });
+
+    if (normalized === 'published') {
+      if (!existing.name || existing.name.trim() === '' || existing.name === 'Untitled Draft' || Number(existing.price) <= 0 || !existing.cat) {
+        return res.status(400).json({
+          error: 'This draft is incomplete. Please edit it to add a garment name, category, and selling price greater than 0 before publishing.'
+        });
+      }
+    }
+
+    const p = await productModel.setPublishStatus(id, normalized);
+
+    activityModel.logCustomerActivity({
+      userId: req.user?.id || 1,
+      userName: req.user?.name || 'Administrator',
+      activityType: 'product_status_changed',
+      description: `Product "${p.name}" publish status set to "${normalized}" by ${req.user?.name || 'Administrator'}`,
+      metadata: { productId: id, status: normalized }
+    }).catch(() => {});
+
+    res.json({ message: `Product status updated to "${normalized}".`, product: p });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 function uploadImage(req, res) {
   const files = req.files && req.files.length ? req.files : (req.file ? [req.file] : []);
   if (!files.length) {
@@ -205,6 +287,7 @@ module.exports = {
   getReviews,
   createReview,
   recordView,
-  uploadImage
+  uploadImage,
+  setPublishStatus
 };
 

@@ -6,6 +6,7 @@ const { optionalAuth, authenticateAdminToken } = require('../middleware/auth');
 const { checkoutLimiter } = require('../middleware/rateLimiter');
 
 router.post('/', checkoutLimiter, optionalAuth, orderController.createOrder);
+router.post('/razorpay-order', checkoutLimiter, optionalAuth, orderController.createRazorpayOrder);
 router.post('/verify-payment', checkoutLimiter, orderController.verifyPayment);
 router.get('/:id', orderController.getOrderById);
 router.post('/:id/cancel', optionalAuth, orderController.cancelOrder);

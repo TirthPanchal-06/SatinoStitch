@@ -1,4 +1,5 @@
 const { pool, query } = require('../config/db');
+const variantModel = require('./variantModel');
 
 async function createOrder(orderData, items) {
   const client = await pool.connect();
@@ -15,10 +16,13 @@ async function createOrder(orderData, items) {
         shipping_address, subtotal, discount, coupon_code, shipping_fee,
         total, payment_method, payment_status, status, tracking_number, estimated_delivery,
         payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature,
-        fraud_score, fraud_status, fraud_flags, client_ip, risk_level
+        fraud_score, fraud_status, fraud_flags, client_ip, risk_level,
+        taxable_amount, cgst_amount, sgst_amount, igst_amount, total_gst,
+        gst_type, gst_pricing_mode, gst_breakdown
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Confirmed', $14, NOW() + INTERVAL '4 days',
-        $15, $16, $17, $18, $19, $20, $21, $22, $23
+        $15, $16, $17, $18, $19, $20, $21, $22, $23,
+        $24, $25, $26, $27, $28, $29, $30, $31::jsonb
       ) RETURNING *;
     `;
 
@@ -45,15 +49,24 @@ async function createOrder(orderData, items) {
       orderData.fraudStatus || 'clean',
       JSON.stringify(orderData.fraudFlags || []),
       orderData.clientIp || null,
-      orderData.riskLevel || 'low'
+      orderData.riskLevel || 'low',
+      orderData.taxableAmount || 0,
+      orderData.cgstAmount || 0,
+      orderData.sgstAmount || 0,
+      orderData.igstAmount || 0,
+      orderData.totalGst || 0,
+      orderData.gstType || 'intra',
+      orderData.gstPricingMode || 'inclusive',
+      JSON.stringify(orderData.gstBreakdown || {})
     ]);
 
     const order = orderRes.rows[0];
 
     const insertItemSql = `
       INSERT INTO order_items (
-        order_id, product_id, product_name, image, size, color, price, quantity, total
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+        order_id, product_id, product_name, image, size, color, price, quantity, total,
+        gst_rate, gst_type, hsn_code, taxable_amount, cgst_amount, sgst_amount, igst_amount, gst_amount
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
     `;
 
     for (const item of lineItems) {
@@ -66,14 +79,25 @@ async function createOrder(orderData, items) {
         item.color || null,
         item.price || 0,
         item.qty || item.quantity || 1,
-        item.total || ((item.price || 0) * (item.qty || 1))
+        item.total || ((item.price || 0) * (item.qty || 1)),
+        item.gstRate !== undefined ? Number(item.gstRate) : 5,
+        item.gstType || 'auto',
+        item.hsnCode || '6204',
+        item.taxableAmount !== undefined ? Number(item.taxableAmount) : ((item.price || 0) * (item.qty || 1)),
+        item.cgstAmount !== undefined ? Number(item.cgstAmount) : 0,
+        item.sgstAmount !== undefined ? Number(item.sgstAmount) : 0,
+        item.igstAmount !== undefined ? Number(item.igstAmount) : 0,
+        item.gstAmount !== undefined ? Number(item.gstAmount) : 0
       ]);
 
-      // Atomic inventory deduction
+      // Atomic variant-wise inventory deduction (auto-syncs products.stock)
       if (item.id) {
-        await client.query(
-          `UPDATE products SET stock = GREATEST(0, stock - $2), updated_at = NOW() WHERE id = $1;`,
-          [Number(item.id), Math.max(1, parseInt(item.qty || 1, 10))]
+        await variantModel.deductVariantStock(
+          client,
+          Number(item.id),
+          item.size || 'M',
+          item.color || null,
+          Math.max(1, parseInt(item.qty || item.quantity || 1, 10))
         );
       }
     }
@@ -115,7 +139,15 @@ async function getUserOrders(userId) {
             'color', oi.color,
             'price', oi.price,
             'quantity', oi.quantity,
-            'total', oi.total
+            'total', oi.total,
+            'gstRate', COALESCE(oi.gst_rate, 5),
+            'gstType', COALESCE(oi.gst_type, 'auto'),
+            'hsnCode', COALESCE(oi.hsn_code, '6204'),
+            'taxableAmount', COALESCE(oi.taxable_amount, oi.total),
+            'cgstAmount', COALESCE(oi.cgst_amount, 0),
+            'sgstAmount', COALESCE(oi.sgst_amount, 0),
+            'igstAmount', COALESCE(oi.igst_amount, 0),
+            'gstAmount', COALESCE(oi.gst_amount, 0)
           )
         ) FILTER (WHERE oi.id IS NOT NULL),
         '[]'::json
@@ -145,7 +177,15 @@ async function getAllOrders() {
             'color', oi.color,
             'price', oi.price,
             'quantity', oi.quantity,
-            'total', oi.total
+            'total', oi.total,
+            'gstRate', COALESCE(oi.gst_rate, 5),
+            'gstType', COALESCE(oi.gst_type, 'auto'),
+            'hsnCode', COALESCE(oi.hsn_code, '6204'),
+            'taxableAmount', COALESCE(oi.taxable_amount, oi.total),
+            'cgstAmount', COALESCE(oi.cgst_amount, 0),
+            'sgstAmount', COALESCE(oi.sgst_amount, 0),
+            'igstAmount', COALESCE(oi.igst_amount, 0),
+            'gstAmount', COALESCE(oi.gst_amount, 0)
           )
         ) FILTER (WHERE oi.id IS NOT NULL),
         '[]'::json

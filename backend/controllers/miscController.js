@@ -80,7 +80,7 @@ function getBanners(req, res) {
 async function getCollections(req, res) {
   let counts = { wedding: 8, festive: 4, everyday: 3, work: 3 };
   try {
-    const dbCounts = await query('SELECT col, COUNT(*)::int AS count FROM products GROUP BY col;');
+    const dbCounts = await query(`SELECT col, COUNT(*)::int AS count FROM products WHERE COALESCE(publish_status, 'published') = 'published' GROUP BY col;`);
     if (dbCounts && dbCounts.rows) {
       dbCounts.rows.forEach(r => {
         if (r.col) counts[r.col] = r.count;
@@ -193,8 +193,25 @@ async function submitContact(req, res) {
 }
 
 async function getPublicSettings(req, res) {
+  const buildSupportContact = (storeInfo = {}) => {
+    const phone = storeInfo.support_phone || storeInfo.phone || env.SUPPORT_PHONE;
+    const email = storeInfo.support_email || storeInfo.email || env.SUPPORT_EMAIL;
+    const hours = storeInfo.support_hours || storeInfo.hours || env.SUPPORT_HOURS;
+    return {
+      phone,
+      email,
+      phoneHours: storeInfo.phone_support_hours || hours,
+      emailHours: storeInfo.email_support_hours || hours,
+      hours
+    };
+  };
+
   try {
     const settings = await adminUpgradeModel.getAllWebsiteSettings();
+    const storeInfo = (settings && settings.store_info && typeof settings.store_info === 'object')
+      ? settings.store_info
+      : {};
+    settings.support_contact = buildSupportContact(storeInfo);
     res.json(settings);
   } catch (err) {
     res.json({
@@ -207,7 +224,8 @@ async function getPublicSettings(req, res) {
         pill: 'Handcrafted Heritage & Sartorial Couture',
         headline: 'Woven for weddings, cut for every day.',
         subheadline: 'Pure Banarasi silk, heritage bandhani and artisanal hand-block prints, paired alongside precision tailoring and liquid satin for the rest of the week. One wardrobe, two timeless traditions.'
-      }
+      },
+      support_contact: buildSupportContact({})
     });
   }
 }

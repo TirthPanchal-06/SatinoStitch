@@ -183,8 +183,8 @@ async function getUserPurchaseProfile(userId) {
  * 3. Patron preferences (occasion, color palette, silhouette, size)
  */
 async function generateOutfitRecommendations({ userId, ip, clientHistory, preferences, mood = null, limit = 4 }) {
-  // 1. Fetch catalog
-  const productsRes = await query(`SELECT * FROM products WHERE stock >= 0 ORDER BY rating DESC;`);
+  // 1. Fetch catalog (published products only)
+  const productsRes = await query(`SELECT * FROM products WHERE stock >= 0 AND COALESCE(publish_status, 'published') = 'published' ORDER BY rating DESC;`);
   const catalog = productsRes.rows;
   if (!catalog || catalog.length === 0) return [];
 
@@ -436,27 +436,27 @@ async function getProductPairings(productId) {
   if (target.cat === 'ethnic') {
     if (target.type.toLowerCase().includes('lehenga') || target.type.toLowerCase().includes('saree')) {
       // Pair with complementary suit sets or kurtas
-      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'ethnic' AND type IN ('Suit sets', 'Kurtas') AND stock > 0 ORDER BY rating DESC LIMIT 2;`;
+      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'ethnic' AND type IN ('Suit sets', 'Kurtas') AND stock > 0 AND COALESCE(publish_status, 'published') = 'published' ORDER BY rating DESC LIMIT 2;`;
       params = [pId];
     } else {
       // Pair with Saree or Lehenga
-      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'ethnic' AND type IN ('Sarees', 'Lehengas') AND stock > 0 ORDER BY rating DESC LIMIT 2;`;
+      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'ethnic' AND type IN ('Sarees', 'Lehengas') AND stock > 0 AND COALESCE(publish_status, 'published') = 'published' ORDER BY rating DESC LIMIT 2;`;
       params = [pId];
     }
   } else {
     // Western
     if (target.type.toLowerCase().includes('top') || target.type.toLowerCase().includes('blazer')) {
-      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'western' AND type IN ('Bottoms', 'Dresses') AND stock > 0 ORDER BY rating DESC LIMIT 2;`;
+      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'western' AND type IN ('Bottoms', 'Dresses') AND stock > 0 AND COALESCE(publish_status, 'published') = 'published' ORDER BY rating DESC LIMIT 2;`;
       params = [pId];
     } else {
-      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'western' AND type IN ('Tops & blazers') AND stock > 0 ORDER BY rating DESC LIMIT 2;`;
+      pairingQuery = `SELECT * FROM products WHERE id != $1 AND cat = 'western' AND type IN ('Tops & blazers') AND stock > 0 AND COALESCE(publish_status, 'published') = 'published' ORDER BY rating DESC LIMIT 2;`;
       params = [pId];
     }
   }
 
   let pairingsRes = await query(pairingQuery, params);
   if (pairingsRes.rows.length === 0) {
-    pairingsRes = await query(`SELECT * FROM products WHERE id != $1 AND stock > 0 ORDER BY rating DESC LIMIT 2;`, [pId]);
+    pairingsRes = await query(`SELECT * FROM products WHERE id != $1 AND stock > 0 AND COALESCE(publish_status, 'published') = 'published' ORDER BY rating DESC LIMIT 2;`, [pId]);
   }
 
   const pairings = pairingsRes.rows;

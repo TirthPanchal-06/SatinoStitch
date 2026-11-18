@@ -144,7 +144,15 @@ async function getUserOrdersForAdmin(userId) {
             'color', oi.color,
             'price', oi.price,
             'quantity', oi.quantity,
-            'total', oi.total
+            'total', oi.total,
+            'gstRate', COALESCE(oi.gst_rate, 5),
+            'gstType', COALESCE(oi.gst_type, 'auto'),
+            'hsnCode', COALESCE(oi.hsn_code, '6204'),
+            'taxableAmount', COALESCE(oi.taxable_amount, oi.total),
+            'cgstAmount', COALESCE(oi.cgst_amount, 0),
+            'sgstAmount', COALESCE(oi.sgst_amount, 0),
+            'igstAmount', COALESCE(oi.igst_amount, 0),
+            'gstAmount', COALESCE(oi.gst_amount, 0)
           )
         ) FILTER (WHERE oi.id IS NOT NULL),
         '[]'::json

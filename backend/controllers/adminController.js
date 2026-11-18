@@ -7,6 +7,8 @@ const adminUpgradeModel = require('../models/adminUpgradeModel');
 const customerNotificationModel = require('../models/customerNotificationModel');
 const securityAuditService = require('../services/securityAuditService');
 const { testConnection, query } = require('../config/db');
+let variantModel;
+try { variantModel = require('../models/variantModel'); } catch (e) { variantModel = null; }
 
 async function getAnalytics(req, res) {
   try {
@@ -29,9 +31,43 @@ async function getActivities(req, res) {
   }
 }
 
+async function getAllProducts(req, res) {
+  try {
+    const status = req.query.status || 'all';
+    const search = req.query.search || '';
+    const list = await productModel.getAllProductsAdmin({ status, search });
+    res.json(list);
+  } catch (err) {
+    console.error('[Admin Get All Products Error]:', err);
+    res.status(500).json({ error: 'Failed to retrieve admin product catalog.' });
+  }
+}
+
 async function getInventory(req, res) {
   try {
-    const summary = await productModel.getInventorySummary();
+    // Use getAllProductsAdmin so drafts and archived products appear in inventory
+    const all = await productModel.getAllProductsAdmin();
+    // Build inventory summary with status labels & variant stock breakdown
+    const summary = all.map(p => ({
+      id: p.id,
+      name: p.name,
+      cat: p.cat,
+      type: p.type,
+      price: p.price,
+      stock: p.stock,
+      image: p.image,
+      sizes: p.sizes,
+      colors: p.colors,
+      variants: p.variants || [],
+      publishStatus: p.publishStatus || 'published',
+      status: p.stock === 0
+        ? 'Out of Stock'
+        : p.stock <= 3
+          ? 'Critical Low'
+          : p.stock <= 5
+            ? 'Low Stock'
+            : 'Healthy'
+    }));
     res.json(summary);
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve atelier inventory.' });
@@ -135,7 +171,7 @@ async function updateOrderStatus(req, res) {
         message: `Your couture parcel status is now "${status}". Tracking: ${updated.tracking_number || 'SS-EXP-2026'}. Courier Partner: Bluedart Apex Express.`,
         badge: status === 'Delivered' ? '✓ Delivered' : '🚚 Shipping Update',
         icon: 'truck',
-        image: 'images/emblem.png',
+        image: 'images/emblem-white.png',
         link: `account.html?tab=orders&id=${updated.id}`,
         metadata: { orderId: updated.id, status, trackingNumber: updated.tracking_number }
       }).catch(() => { });
@@ -228,7 +264,28 @@ async function updateWebsiteSetting(req, res) {
   }
 
   try {
-    const updated = await adminUpgradeModel.setWebsiteSetting(key, value);
+    let valueToSave = value;
+    if (key === 'store_info' && value && typeof value === 'object') {
+      const existing = await adminUpgradeModel.getWebsiteSetting('store_info');
+      const prev = (existing && typeof existing === 'object') ? existing : {};
+      const nextPhone = value.support_phone || value.phone || prev.support_phone || prev.phone;
+      const nextEmail = value.support_email || value.email || prev.support_email || prev.email;
+      const nextHours = value.support_hours || value.hours || prev.support_hours || prev.hours || '10:00 AM to 5:00 PM';
+      valueToSave = {
+        ...prev,
+        ...value,
+        phone: nextPhone,
+        support_phone: nextPhone,
+        email: nextEmail,
+        support_email: nextEmail,
+        hours: nextHours,
+        support_hours: nextHours,
+        phone_support_hours: value.phone_support_hours || nextHours,
+        email_support_hours: value.email_support_hours || nextHours
+      };
+    }
+
+    const updated = await adminUpgradeModel.setWebsiteSetting(key, valueToSave);
     activityModel.logCustomerActivity({
       userId: req.user.id,
       userName: req.user.name,
@@ -411,7 +468,7 @@ async function reviewOrderFraud(req, res) {
       path: `/api/admin/orders/${id}/fraud-review`,
       method: 'PUT',
       details: { orderId: id, decision, notes }
-    }).catch(() => {});
+    }).catch(() => { });
 
     res.json({
       success: true,
@@ -437,7 +494,7 @@ async function unlockUserAccount(req, res) {
       path: `/api/admin/users/${id}/unlock`,
       method: 'POST',
       details: { unlockedUserId: id, unlockedEmail: unlocked.email }
-    }).catch(() => {});
+    }).catch(() => { });
 
     res.json({
       success: true,
@@ -452,6 +509,7 @@ async function unlockUserAccount(req, res) {
 module.exports = {
   getAnalytics,
   getActivities,
+  getAllProducts,
   getInventory,
   updateProductStock,
   getAllUsers,

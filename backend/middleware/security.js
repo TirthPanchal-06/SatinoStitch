@@ -48,7 +48,7 @@ function scanAndSanitize(obj, req, location = 'body') {
         path: req.originalUrl || req.path,
         method: req.method,
         details: { blockedKey: key, location }
-      }).catch(() => {});
+      }).catch(() => { });
       continue;
     }
 
@@ -70,7 +70,7 @@ function scanAndSanitize(obj, req, location = 'body') {
             path: req.originalUrl || req.path,
             method: req.method,
             details: { param: key, valueSample: val.slice(0, 100), location }
-          }).catch(() => {});
+          }).catch(() => { });
           throw new Error(`Potential Cross-Site Scripting (XSS) payload detected in "${key}".`);
         }
       }
@@ -86,7 +86,7 @@ function scanAndSanitize(obj, req, location = 'body') {
             path: req.originalUrl || req.path,
             method: req.method,
             details: { param: key, valueSample: val.slice(0, 100), location }
-          }).catch(() => {});
+          }).catch(() => { });
           throw new Error(`Potential SQL Injection pattern detected in "${key}".`);
         }
       }
@@ -130,12 +130,12 @@ function securityHeaders(req, res, next) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https: /uploads/",
-    "connect-src 'self' https://api.razorpay.com https://lapi.razorpay.com",
+    "connect-src 'self' https://api.razorpay.com https://lapi.razorpay.com https://lumberjack.razorpay.com",
     "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com",
     "frame-ancestors 'self'",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'"
+    "form-action 'self' https://api.razorpay.com"
   ].join('; ');
 
   res.setHeader('Content-Security-Policy', cspDirectives);
